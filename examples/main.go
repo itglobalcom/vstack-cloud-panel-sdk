@@ -84,6 +84,8 @@ func main() {
 		runRaceConditionTest(ctx, client)
 	case "meta":
 		runMetadataExample(ctx, client)
+	case "vmware":
+		runVMwareExample(ctx, client)
 	default:
 		fmt.Fprintf(os.Stderr, "Error: Unknown resource type '%s'\n\n", *resource)
 		flag.Usage()

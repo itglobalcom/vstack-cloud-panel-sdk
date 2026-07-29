@@ -2,8 +2,9 @@
 //
 // It provides a typed client for managing cloud resources — servers, networks,
 // server NICs, volumes, snapshots, SSH keys, DNS zones, gateways, affinity
-// groups and project metadata — exposed by the vStack Cloud Panel
-// (for example https://api.example.com).
+// groups, project metadata and the read-only VMware catalog (locations, disk
+// types, GPU models, storage profiles, images) — exposed by the vStack Cloud
+// Panel (for example https://api.example.com).
 //
 // # Getting started
 //

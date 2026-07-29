@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -14,8 +15,12 @@ func TestBuildVMwarePath(t *testing.T) {
 
 	// url.Values.Encode sorts keys, so the path is deterministic.
 	filters := url.Values{}
-	addIDFilter(filters, "location_id", 2)
-	addIDFilter(filters, "disk_type_id", 7)
+	if err := addIDFilter(filters, "location_id", 2); err != nil {
+		t.Fatalf("location_id filter: %v", err)
+	}
+	if err := addIDFilter(filters, "disk_type_id", 7); err != nil {
+		t.Fatalf("disk_type_id filter: %v", err)
+	}
 	want := "vmware/storage-profiles?disk_type_id=7&location_id=2"
 	if got := buildVMwarePath(vmwareStorageProfilesPath, filters); got != want {
 		t.Errorf("both filters: got %q, want %q", got, want)
@@ -27,20 +32,57 @@ func TestBuildVMwarePath(t *testing.T) {
 	}
 }
 
-// A non-positive filter means "not specified": the API treats an absent
-// parameter as no filter, while location_id=0 is not a valid location and
-// would turn a list call into a 400.
-func TestAddIDFilterSkipsNonPositive(t *testing.T) {
+// Zero means "not specified" (the API treats an absent parameter as no filter
+// and 0 is not a member of DCLocationEnum), while a negative id is a caller
+// error: dropping it would answer a broken id with the full unfiltered list.
+func TestAddIDFilter(t *testing.T) {
 	filters := url.Values{}
-	addIDFilter(filters, "location_id", 0)
-	addIDFilter(filters, "disk_type_id", -1)
+	if err := addIDFilter(filters, "location_id", 0); err != nil {
+		t.Errorf("zero must mean \"no filter\", got error: %v", err)
+	}
 	if len(filters) != 0 {
-		t.Errorf("non-positive values must be skipped, got %v", filters)
+		t.Errorf("zero must not add a filter, got %v", filters)
 	}
 
-	addIDFilter(filters, "location_id", 14)
+	if err := addIDFilter(filters, "disk_type_id", -1); err == nil {
+		t.Error("negative value must be rejected")
+	}
+	if len(filters) != 0 {
+		t.Errorf("rejected value must not be added, got %v", filters)
+	}
+
+	if err := addIDFilter(filters, "location_id", 14); err != nil {
+		t.Fatalf("positive value: %v", err)
+	}
 	if filters.Get("location_id") != "14" {
 		t.Errorf("positive value must be set, got %v", filters)
+	}
+}
+
+// A negative id must fail before the request is built — the caller must not get
+// a full unfiltered list back.
+func TestGetVMwareCatalogRejectsNegativeID(t *testing.T) {
+	config, err := NewConfig("token", "https://api.example.com")
+	if err != nil {
+		t.Fatalf("config: %v", err)
+	}
+	client, err := NewClient(config)
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	ctx := context.Background()
+
+	if _, err := client.GetVMwareDiskTypes(ctx, -1); err == nil {
+		t.Error("GetVMwareDiskTypes must reject a negative location_id")
+	}
+	if _, err := client.GetVMwareGPUModels(ctx, -1); err == nil {
+		t.Error("GetVMwareGPUModels must reject a negative location_id")
+	}
+	if _, err := client.GetVMwareStorageProfiles(ctx, 2, -1); err == nil {
+		t.Error("GetVMwareStorageProfiles must reject a negative disk_type_id")
+	}
+	if _, err := client.GetVMwareImages(ctx, -1, false); err == nil {
+		t.Error("GetVMwareImages must reject a negative location_id")
 	}
 }
 

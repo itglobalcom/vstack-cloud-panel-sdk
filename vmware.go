@@ -58,15 +58,25 @@ func buildVMwarePath(resource string, filters url.Values) string {
 	return fmt.Sprintf("%s?%s", path, filters.Encode())
 }
 
-// addIDFilter adds a numeric filter to the query, skipping non-positive
-// values: the API treats an absent parameter as "no filter", and location /
-// disk type identifiers are always positive. Passing an unknown location_id
-// makes the API answer 400 with APICodeDCLocationDoesNotExist rather than an
-// empty list.
-func addIDFilter(filters url.Values, name string, value int) {
+// addIDFilter adds a numeric filter to the query.
+//
+// Zero means "filter not specified" — a deliberate contract: the API treats an
+// absent parameter as no filter, and 0 is not a member of DCLocationEnum, so it
+// can never be a real location / disk type identifier.
+//
+// A negative value is a caller error and is reported as such instead of being
+// dropped: silently omitting the filter would answer a broken id with the full
+// unfiltered list, whereas the API answers an unknown (but positive)
+// location_id with 400 / APICodeDCLocationDoesNotExist. The check runs before
+// the request is built, so a broken id never reaches the API.
+func addIDFilter(filters url.Values, name string, value int) error {
+	if value < 0 {
+		return fmt.Errorf("%s must be greater than 0", name)
+	}
 	if value > 0 {
 		filters.Set(name, strconv.Itoa(value))
 	}
+	return nil
 }
 
 // GetVMwareLocations retrieves the VMware locations connected to the partner
@@ -90,7 +100,9 @@ func (c *CloudClient) GetVMwareLocations(ctx context.Context) ([]entities.VMware
 // locationID is optional — pass 0 to list the disk types of every location.
 func (c *CloudClient) GetVMwareDiskTypes(ctx context.Context, locationID int) ([]entities.VMwareDiskType, error) {
 	filters := url.Values{}
-	addIDFilter(filters, "location_id", locationID)
+	if err := addIDFilter(filters, "location_id", locationID); err != nil {
+		return nil, err
+	}
 
 	path := buildVMwarePath(vmwareDiskTypesPath, filters)
 	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
@@ -110,7 +122,9 @@ func (c *CloudClient) GetVMwareDiskTypes(ctx context.Context, locationID int) ([
 // locationID is optional — pass 0 to list the models of every location.
 func (c *CloudClient) GetVMwareGPUModels(ctx context.Context, locationID int) ([]entities.VMwareGPUModel, error) {
 	filters := url.Values{}
-	addIDFilter(filters, "location_id", locationID)
+	if err := addIDFilter(filters, "location_id", locationID); err != nil {
+		return nil, err
+	}
 
 	path := buildVMwarePath(vmwareGPUModelsPath, filters)
 	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
@@ -130,8 +144,12 @@ func (c *CloudClient) GetVMwareGPUModels(ctx context.Context, locationID int) ([
 // Both filters are optional — pass 0 to skip a filter.
 func (c *CloudClient) GetVMwareStorageProfiles(ctx context.Context, locationID, diskTypeID int) ([]entities.VMwareStorageProfile, error) {
 	filters := url.Values{}
-	addIDFilter(filters, "location_id", locationID)
-	addIDFilter(filters, "disk_type_id", diskTypeID)
+	if err := addIDFilter(filters, "location_id", locationID); err != nil {
+		return nil, err
+	}
+	if err := addIDFilter(filters, "disk_type_id", diskTypeID); err != nil {
+		return nil, err
+	}
 
 	path := buildVMwarePath(vmwareStorageProfilesPath, filters)
 	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
@@ -153,7 +171,9 @@ func (c *CloudClient) GetVMwareStorageProfiles(ctx context.Context, locationID, 
 // returns every image.
 func (c *CloudClient) GetVMwareImages(ctx context.Context, locationID int, gpuOnly bool) ([]entities.VMwareImage, error) {
 	filters := url.Values{}
-	addIDFilter(filters, "location_id", locationID)
+	if err := addIDFilter(filters, "location_id", locationID); err != nil {
+		return nil, err
+	}
 	// Only send gpu_only when it changes the API default (false), so that the
 	// unfiltered call stays a plain GET without a query string.
 	if gpuOnly {
