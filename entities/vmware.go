@@ -95,7 +95,7 @@ type VmwareGpuRequest struct {
 type VmwareCreateServerRequest struct {
 	LocationID           int               `json:"location_id"`
 	Name                 string            `json:"name"`
-	ComputerName         string            `json:"computer_name"`
+	ComputerName         string            `json:"computer_name,omitempty"`
 	ImageID              int               `json:"image_id"`
 	CPUCount             int               `json:"cpu_count"`
 	RamMB                int               `json:"ram_mb"`
