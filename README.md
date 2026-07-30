@@ -107,6 +107,7 @@ The client exposes methods for the following resources:
 - **DNS** zones and records
 - **Gateways**
 - **Affinity groups**
+- **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall), networks (isolated/routed/public), edge (firewall/NAT/VPN/bandwidth) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
 - **Project metadata** — locations, images, applications, tasks
 
 Mutating operations that trigger a background task provide an `...AndWait` variant
