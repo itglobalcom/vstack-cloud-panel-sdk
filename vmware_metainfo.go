@@ -19,7 +19,7 @@ const (
 	vmwareImagesURL          = "vmware/images"
 	vmwareDiskTypesURL       = "vmware/disk-types"
 	vmwareStorageProfilesURL = "vmware/storage-profiles"
-	vmwareGpuModelsURL       = "vmware/gpu-models"
+	vmwareGPUModelsURL       = "vmware/gpu-models"
 	// SDK-1: the dedicated vmwareTasksBaseURL constant was removed; VMware tasks
 	// are served by the shared tasks resource, so tasksBaseURL from task.go is
 	// reused (task ids are strings of the form "vmw{N}").
@@ -39,8 +39,8 @@ type (
 	vmwareStorageProfilesResponse struct {
 		StorageProfiles []*entities.VmwareStorageProfile `json:"storage_profiles,omitempty"`
 	}
-	vmwareGpuModelsResponse struct {
-		GpuModels []*entities.VmwareGPUModel `json:"gpu_models,omitempty"`
+	vmwareGPUModelsResponse struct {
+		GPUModels []*entities.VmwareGPUModel `json:"gpu_models,omitempty"`
 	}
 	vmwareTaskResponse struct {
 		Task *entities.VmwareTask `json:"task,omitempty"`
@@ -146,10 +146,10 @@ func (c *CloudClient) GetVmwareStorageProfileList(ctx context.Context, locationI
 	return resp.StorageProfiles, nil
 }
 
-// GetVmwareGpuModelList returns the GPU models, optionally filtered by location.
+// GetVmwareGPUModelList returns the GPU models, optionally filtered by location.
 //
 // SDK-5: pointers intentionally kept for the optional int filter.
-func (c *CloudClient) GetVmwareGpuModelList(ctx context.Context, locationID *int) ([]*entities.VmwareGPUModel, error) {
+func (c *CloudClient) GetVmwareGPUModelList(ctx context.Context, locationID *int) ([]*entities.VmwareGPUModel, error) {
 	// SDK-4: validate the optional id before sending it.
 	if locationID != nil && *locationID <= 0 {
 		return nil, fmt.Errorf("location ID must be positive")
@@ -158,15 +158,15 @@ func (c *CloudClient) GetVmwareGpuModelList(ctx context.Context, locationID *int
 	if locationID != nil {
 		params.Set("location_id", strconv.Itoa(*locationID))
 	}
-	req, err := c.newRequest(ctx, http.MethodGet, withQuery(vmwareGpuModelsURL, params), nil)
+	req, err := c.newRequest(ctx, http.MethodGet, withQuery(vmwareGPUModelsURL, params), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create vmware gpu models request: %w", err)
 	}
-	var resp vmwareGpuModelsResponse
+	var resp vmwareGPUModelsResponse
 	if err := c.doJSON(req, &resp); err != nil {
 		return nil, fmt.Errorf("failed to list vmware gpu models: %w", err)
 	}
-	return resp.GpuModels, nil
+	return resp.GPUModels, nil
 }
 
 // GetVmwareTask returns the status of a VMware task by its id (a string of the

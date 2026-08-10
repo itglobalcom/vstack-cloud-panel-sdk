@@ -341,18 +341,19 @@ func (r *VmwareUpdateNICRequest) Validate() error {
 
 // VmwareServerFirewallRule represents a single server firewall rule.
 //
-// SDK-S1: this type is incomplete against the backend. The backend requires the
-// additional fields name and traffic_direction, which the public API does not
-// yet expose, so UpdateVmwareServerFirewall with any non-empty rule set is
-// rejected with 400 - the method is currently usable only to clear rules
-// (servers-sdk.md, SDK-S1). Align this type once the API is fixed.
+// SDK-S1: name and traffic_direction are mandatory on the backend and are now
+// exposed by the public API (cloudmng MR !1384), so they are part of this type
+// for both read and write. traffic_direction is the enum name ("Incoming" /
+// "Outgoing"); action/protocol follow the same casing the API returns.
 type VmwareServerFirewallRule struct {
-	Action          string  `json:"action"`
-	Protocol        string  `json:"protocol"`
-	Source          *string `json:"source,omitempty"`
-	SourcePort      *string `json:"source_port,omitempty"`
-	Destination     *string `json:"destination,omitempty"`
-	DestinationPort *string `json:"destination_port,omitempty"`
+	Name             string  `json:"name"`
+	TrafficDirection string  `json:"traffic_direction"`
+	Action           string  `json:"action"`
+	Protocol         string  `json:"protocol"`
+	Source           *string `json:"source,omitempty"`
+	SourcePort       *string `json:"source_port,omitempty"`
+	Destination      *string `json:"destination,omitempty"`
+	DestinationPort  *string `json:"destination_port,omitempty"`
 }
 
 // VmwareUpdateServerFirewallRequest replaces the full server firewall rule set.
@@ -361,12 +362,23 @@ type VmwareUpdateServerFirewallRequest struct {
 }
 
 // Validate checks the update server firewall request (C-6). An empty rule set is
-// allowed (it clears the firewall); every provided rule must carry an action.
+// allowed (it clears the firewall); every provided rule must carry name,
+// traffic_direction and action — all mandatory on the backend (SDK-S1).
 func (r *VmwareUpdateServerFirewallRequest) Validate() error {
 	for i, rule := range r.Rules {
-		// C-6: action is a mandatory field of every firewall rule.
+		// SDK-S1 + C-6: name, traffic_direction and action are mandatory per rule.
+		if rule.Name == "" {
+			return fmt.Errorf("rules[%d]: name is required", i)
+		}
+		if rule.TrafficDirection == "" {
+			return fmt.Errorf("rules[%d]: traffic_direction is required", i)
+		}
 		if rule.Action == "" {
 			return fmt.Errorf("rules[%d]: action is required", i)
+		}
+		// protocol is a non-pointer required field on the backend.
+		if rule.Protocol == "" {
+			return fmt.Errorf("rules[%d]: protocol is required", i)
 		}
 	}
 	return nil

@@ -99,16 +99,9 @@ func (c *CloudClient) CreateVmwareServer(ctx context.Context, req *entities.Vmwa
 	if req == nil {
 		return nil, fmt.Errorf("create vmware server request is required")
 	}
+	// SDK-S4: req.Validate already enforces the full GPU triple when GPU != nil.
 	if err := req.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid create vmware server request: %w", err)
-	}
-	// SDK-S4: when a GPU is requested the full triple (gpu_model_id, vram_mb,
-	// card_count) is mandatory. req.Validate already enforces this, but the check
-	// is made explicit here as the reviewer requested.
-	if req.GPU != nil {
-		if err := req.GPU.Validate(); err != nil {
-			return nil, fmt.Errorf("invalid create vmware server request: %w", err)
-		}
 	}
 	httpReq, err := c.newRequest(ctx, http.MethodPost, vmwareServersBaseURL, req)
 	if err != nil {
@@ -696,16 +689,12 @@ func (c *CloudClient) DeleteVmwareNIC(ctx context.Context, serverID, nicID int) 
 
 // GetVmwareServerFirewall returns the firewall rules of a server.
 //
-// SDK-S1: the returned VmwareServerFirewallRule is intentionally incomplete - the
-// public API DTO does not expose the name and traffic_direction fields the
-// backend uses (SRV-1), so through the public API the server firewall can only
-// be cleared, not populated. This is an API-side limitation; do not add fields
-// here that would never reach the backend.
+// SDK-S1: VmwareServerFirewallRule now carries name and traffic_direction, which
+// the public API exposes (SRV-1, cloudmng MR !1384), so a full rule set round-trips.
 //
-// SDK-S2: a server without rules answers 404, which surfaces as an error for which
-// IsNotFound reports true. For this endpoint a 404 therefore means "no rules OR
-// no such server" - the two cannot be told apart on the SDK side, this is API
-// behaviour (SRV-2).
+// SDK-S2: with SRV-2 fixed a server with no rules returns an empty set (200), and a
+// 404 now means only "no such server". Against a backend without the SRV-2 fix a
+// 404 may still mean "no rules"; IsNotFound reports true in either case.
 func (c *CloudClient) GetVmwareServerFirewall(ctx context.Context, serverID int) ([]*entities.VmwareServerFirewallRule, error) {
 	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
@@ -726,11 +715,9 @@ func (c *CloudClient) GetVmwareServerFirewall(ctx context.Context, serverID int)
 // UpdateVmwareServerFirewall atomically replaces the whole server firewall rule
 // set (set semantics).
 //
-// SDK-S1: through the public API this method is usable only to CLEAR the firewall
-// (an empty rule set). Any non-empty rule set is rejected with 400 because the
-// public API DTO does not carry the name and traffic_direction fields the
-// backend requires (SRV-1). Do not add those fields here until the API exposes
-// them, otherwise they would never reach the backend.
+// SDK-S1: a non-empty rule set now works — each rule must carry name,
+// traffic_direction and action (enforced by Validate); the API exposes these
+// fields as of SRV-1 (cloudmng MR !1384). An empty rule set clears the firewall.
 //
 // SDK-S3: a synchronous response (empty 200 body, which is what clearing the rules
 // returns) carries no task_id. In that case this method returns (nil, nil) so
