@@ -110,12 +110,18 @@ The client exposes methods for the following resources:
 - **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall), networks (isolated/routed/public), edge (firewall/NAT/VPN/bandwidth) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
 - **Project metadata** — locations, images, applications, tasks
 
-Mutating operations that trigger a background task provide an `...AndWait` variant
+Most mutating operations that trigger a background task provide an `...AndWait` variant
 (for example `CreateServerAndWait`) that polls the task until it finishes:
 
 ```go
 server, err := client.CreateServerAndWait(ctx, &entities.CreateServerRequest{ /* ... */ })
 ```
+
+In the **VMware Cloud** section only the create methods offer this convenience
+(`CreateVmwareServerAndWait` and the `CreateVmware*NetworkAndWait` family). Every other
+VMware mutator returns a task reference that you await explicitly with `WaitVmwareTask`
+(or `WaitVmwareTaskWithTimeout`). VMware task IDs (`vmw{N}`) are a separate namespace from
+base task IDs and must not be passed to `GetTask` / `WaitServerTaskCompletion`.
 
 ## Error handling
 

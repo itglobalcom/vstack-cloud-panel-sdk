@@ -22,7 +22,22 @@ const (
 	// APICodeAffinityGroupNotEmpty — "There must not be any servers in the group":
 	// the group cannot be deleted while it contains servers.
 	APICodeAffinityGroupNotEmpty = -19619
+	// SDK-6: APICodeVmwareLocationNotFound — "Location not found" for an unknown
+	// VMware location_id. The backend returns this as HTTP 400 (not 404), so
+	// IsNotFound does NOT recognize it (see the note on IsNotFound). Callers that
+	// need to treat a missing VMware location as not-found should match this code
+	// explicitly via HasAPICode until the API is fixed (backend workaround API-5).
+	APICodeVmwareLocationNotFound = -8049
 )
+
+// ErrorParam is a single name/value pair from an API error's error_params block.
+// The backend uses it to point at the specific field or list element that failed
+// (for example {"name":"Index","value":0} or {"name":"server_ids","value":"999999"}).
+// Value is decoded as-is from JSON, so it may be a string, number, bool or nil.
+type ErrorParam struct {
+	Name  string `json:"name"`
+	Value any    `json:"value"`
+}
 
 // RequestError represents an HTTP request error with detailed information
 type RequestError struct {
@@ -32,7 +47,12 @@ type RequestError struct {
 	Body       []byte
 	// Codes — API error codes from the response body ({"errors":[{"code":...}]}).
 	Codes []int
-	Err   error
+	// SDK-S5: ErrorParams — the parsed error_params of every error in the response
+	// body, flattened across all entries, in the order the API returned them. For
+	// batch operations (for example ConnectVmwareServers with several NICs) this is
+	// the only way to tell which element failed. Empty when the API sends none.
+	ErrorParams []ErrorParam
+	Err         error
 }
 
 // Error implements the error interface
@@ -70,6 +90,11 @@ var ErrNotFound = errors.New("not found")
 
 // IsNotFound reports whether err means the requested object does not exist:
 // either an HTTP 404 from the API or a semantic not-found (see ErrNotFound).
+//
+// SDK-6: this intentionally does NOT cover the VMware "Location not found" error
+// (APICodeVmwareLocationNotFound, -8049), which the backend returns as HTTP 400.
+// Recognizing a 400 as not-found here would be a leaky hack that misclassifies
+// other 400s, so callers must match that code explicitly (see HasAPICode).
 func IsNotFound(err error) bool {
 	if errors.Is(err, ErrNotFound) {
 		return true
@@ -94,11 +119,15 @@ func HasAPICode(err error, code int) bool {
 	return errors.As(err, &re) && re.HasCode(code)
 }
 
-// apiErrorBody — the actual API error format: {"errors":[{"code":-4000,"message":"..."}]}.
+// apiErrorBody — the actual API error format:
+// {"errors":[{"code":-4000,"message":"...","error_params":[{"name":..,"value":..}]}]}.
 type apiErrorBody struct {
 	Errors []struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
+		// SDK-S5: error_params is part of the documented error envelope
+		// (vmware_error_response) and is preserved here rather than dropped.
+		ErrorParams []ErrorParam `json:"error_params"`
 	} `json:"errors"`
 }
 
@@ -109,16 +138,21 @@ type legacyErrorBody struct {
 	Code    string `json:"code,omitempty"`
 }
 
-// parseAPIError extracts codes and a human-readable message from the error body.
-func parseAPIError(body []byte) (codes []int, message string) {
+// parseAPIError extracts codes, error_params and a human-readable message from
+// the error body.
+//
+// SDK-S5: params carries the flattened error_params of every error entry, in the
+// order the API returned them, so batch callers can map a failure to its element.
+func parseAPIError(body []byte) (codes []int, params []ErrorParam, message string) {
 	if len(body) == 0 {
-		return nil, ""
+		return nil, nil, ""
 	}
 
 	var apiErr apiErrorBody
 	if err := json.Unmarshal(body, &apiErr); err == nil && len(apiErr.Errors) > 0 {
 		for _, e := range apiErr.Errors {
 			codes = append(codes, e.Code)
+			params = append(params, e.ErrorParams...)
 			if message == "" && e.Message != "" {
 				message = e.Message
 			}
@@ -126,28 +160,28 @@ func parseAPIError(body []byte) (codes []int, message string) {
 		if message == "" {
 			message = string(body)
 		}
-		return codes, message
+		return codes, params, message
 	}
 
 	var legacy legacyErrorBody
 	if err := json.Unmarshal(body, &legacy); err == nil {
 		switch {
 		case legacy.Error != "":
-			return nil, legacy.Error
+			return nil, nil, legacy.Error
 		case legacy.Message != "":
-			return nil, legacy.Message
+			return nil, nil, legacy.Message
 		case legacy.Code != "":
-			return nil, legacy.Code
+			return nil, nil, legacy.Code
 		}
 	}
 
-	return nil, string(body)
+	return nil, nil, string(body)
 }
 
 // parseErrorResponse attempts to parse API error from response body.
 // Deprecated: kept for backward compatibility; see parseAPIError.
 func parseErrorResponse(body []byte) string {
-	_, msg := parseAPIError(body)
+	_, _, msg := parseAPIError(body)
 	return msg
 }
 

@@ -2,8 +2,18 @@
 //
 // It provides a typed client for managing cloud resources — servers, networks,
 // server NICs, volumes, snapshots, SSH keys, DNS zones, gateways, affinity
-// groups and project metadata — exposed by the vStack Cloud Panel
-// (for example https://api.example.com).
+// groups, VMware Cloud (servers, networks, edge and metadata) and project
+// metadata — exposed by the vStack Cloud Panel (for example
+// https://api.example.com).
+//
+// # VMware Cloud
+//
+// C-13: the VMware section (types and methods prefixed with Vmware) differs from
+// the rest of the SDK in two ways the API dictates. First, its objects are keyed
+// by numeric int IDs, whereas the rest of the SDK uses string IDs. Second, its
+// background tasks are awaited with WaitVmwareTask (task IDs of the form "vmw{N}"),
+// not with the base task helpers — see the warning on GetTask. The create methods
+// additionally offer "...AndWait" variants (see below).
 //
 // # Getting started
 //
@@ -42,6 +52,11 @@
 // Many mutating calls have an "AndWait" variant (for example CreateServerAndWait)
 // that polls the associated task until it completes, so callers need not
 // implement polling themselves.
+//
+// C-3: in the VMware section only the create methods provide such a variant
+// (CreateVmwareServerAndWait and the CreateVmware*NetworkAndWait family). Every
+// other VMware mutator returns a task reference that must be awaited explicitly
+// with WaitVmwareTask or WaitVmwareTaskWithTimeout.
 //
 // # Retries and concurrency
 //

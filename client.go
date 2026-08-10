@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 )
@@ -108,6 +109,17 @@ func (c *CloudClient) Config() Config {
 	return *c.config
 }
 
+// SDK-2: withQuery appends the encoded query parameters to path, returning path
+// unchanged when there are none. It is a general-purpose helper (unrelated to any
+// single resource), so it lives here in client.go rather than in a resource file.
+// buildURL preserves the query string as-is.
+func withQuery(path string, params url.Values) string {
+	if len(params) == 0 {
+		return path
+	}
+	return path + "?" + params.Encode()
+}
+
 // buildURL constructs the full API URL with base URL and path.
 // This method is safe for concurrent use.
 func (c *CloudClient) buildURL(path string) string {
@@ -187,13 +199,15 @@ func (c *CloudClient) doJSON(req *http.Request, result any) error {
 
 	// Check for HTTP errors
 	if resp.StatusCode >= 400 {
-		codes, message := parseAPIError(body)
+		// SDK-5: propagate error_params alongside codes/message.
+		codes, params, message := parseAPIError(body)
 		return &RequestError{
-			Status:     resp.Status,
-			StatusCode: resp.StatusCode,
-			Message:    message,
-			Body:       body,
-			Codes:      codes,
+			Status:      resp.Status,
+			StatusCode:  resp.StatusCode,
+			Message:     message,
+			Body:        body,
+			Codes:       codes,
+			ErrorParams: params,
 		}
 	}
 

@@ -12,19 +12,20 @@ import (
 	"github.com/itglobalcom/vstack-cloud-panel-sdk/entities"
 )
 
-// Пути услуги VMware (относительно /api/v1/, который добавляет buildURL).
+// VMware service paths (relative to /api/v1/, which is prepended by buildURL).
+// C-1: comments translated to English.
 const (
 	vmwareLocationsURL       = "vmware/locations"
 	vmwareImagesURL          = "vmware/images"
 	vmwareDiskTypesURL       = "vmware/disk-types"
 	vmwareStorageProfilesURL = "vmware/storage-profiles"
 	vmwareGpuModelsURL       = "vmware/gpu-models"
-	// Задачи vmware обслуживаются общим ресурсом задач: /api/v1/tasks/{task_id},
-	// где task_id — строка вида vmw{N}.
-	vmwareTasksBaseURL = "tasks"
+	// SDK-1: the dedicated vmwareTasksBaseURL constant was removed; VMware tasks
+	// are served by the shared tasks resource, so tasksBaseURL from task.go is
+	// reused (task ids are strings of the form "vmw{N}").
 )
 
-// Ответы метаинформации / задач VMware.
+// VMware metainfo / task response wrappers.
 type (
 	vmwareLocationsResponse struct {
 		Locations []*entities.VmwareLocation `json:"locations,omitempty"`
@@ -39,22 +40,18 @@ type (
 		StorageProfiles []*entities.VmwareStorageProfile `json:"storage_profiles,omitempty"`
 	}
 	vmwareGpuModelsResponse struct {
-		GpuModels []*entities.VmwareGpuModel `json:"gpu_models,omitempty"`
+		GpuModels []*entities.VmwareGPUModel `json:"gpu_models,omitempty"`
 	}
 	vmwareTaskResponse struct {
 		Task *entities.VmwareTask `json:"task,omitempty"`
 	}
 )
 
-// withQuery добавляет query-параметры к пути (buildURL сохраняет строку запроса как есть).
-func withQuery(path string, params url.Values) string {
-	if len(params) == 0 {
-		return path
-	}
-	return path + "?" + params.Encode()
-}
+// SDK-2: the withQuery helper is a general-purpose helper and now lives in
+// client.go; its definition is removed here and callers use the package-level
+// withQuery directly.
 
-// GetVmwareLocationList возвращает справочник локаций VMware.
+// GetVmwareLocationList returns the VMware locations catalog.
 func (c *CloudClient) GetVmwareLocationList(ctx context.Context) ([]*entities.VmwareLocation, error) {
 	req, err := c.newRequest(ctx, http.MethodGet, vmwareLocationsURL, nil)
 	if err != nil {
@@ -67,8 +64,17 @@ func (c *CloudClient) GetVmwareLocationList(ctx context.Context) ([]*entities.Vm
 	return resp.Locations, nil
 }
 
-// GetVmwareImageList возвращает шаблоны/образы (опционально по локации / только GPU).
+// GetVmwareImageList returns the templates/images, optionally filtered by
+// location and/or restricted to GPU-only images.
+//
+// SDK-5: pointers intentionally kept for optional int/bool filters; 0 is an
+// ambiguous "unset" value for these, so *int/*bool are used to express
+// "filter not set".
 func (c *CloudClient) GetVmwareImageList(ctx context.Context, locationID *int, gpuOnly *bool) ([]*entities.VmwareImage, error) {
+	// SDK-4: validate the optional id before sending it.
+	if locationID != nil && *locationID <= 0 {
+		return nil, fmt.Errorf("location ID must be positive")
+	}
 	params := url.Values{}
 	if locationID != nil {
 		params.Set("location_id", strconv.Itoa(*locationID))
@@ -87,8 +93,14 @@ func (c *CloudClient) GetVmwareImageList(ctx context.Context, locationID *int, g
 	return resp.Images, nil
 }
 
-// GetVmwareDiskTypeList возвращает типы дисков (опционально по локации).
+// GetVmwareDiskTypeList returns the disk types, optionally filtered by location.
+//
+// SDK-5: pointers intentionally kept for the optional int filter.
 func (c *CloudClient) GetVmwareDiskTypeList(ctx context.Context, locationID *int) ([]*entities.VmwareDiskType, error) {
+	// SDK-4: validate the optional id before sending it.
+	if locationID != nil && *locationID <= 0 {
+		return nil, fmt.Errorf("location ID must be positive")
+	}
 	params := url.Values{}
 	if locationID != nil {
 		params.Set("location_id", strconv.Itoa(*locationID))
@@ -104,8 +116,18 @@ func (c *CloudClient) GetVmwareDiskTypeList(ctx context.Context, locationID *int
 	return resp.DiskTypes, nil
 }
 
-// GetVmwareStorageProfileList возвращает storage-профили (опционально по локации / типу диска).
+// GetVmwareStorageProfileList returns the storage profiles, optionally filtered
+// by location and/or disk type.
+//
+// SDK-5: pointers intentionally kept for the optional int filters.
 func (c *CloudClient) GetVmwareStorageProfileList(ctx context.Context, locationID *int, diskTypeID *int) ([]*entities.VmwareStorageProfile, error) {
+	// SDK-4: validate the optional ids before sending them.
+	if locationID != nil && *locationID <= 0 {
+		return nil, fmt.Errorf("location ID must be positive")
+	}
+	if diskTypeID != nil && *diskTypeID <= 0 {
+		return nil, fmt.Errorf("disk type ID must be positive")
+	}
 	params := url.Values{}
 	if locationID != nil {
 		params.Set("location_id", strconv.Itoa(*locationID))
@@ -124,8 +146,14 @@ func (c *CloudClient) GetVmwareStorageProfileList(ctx context.Context, locationI
 	return resp.StorageProfiles, nil
 }
 
-// GetVmwareGpuModelList возвращает модели GPU (опционально по локации).
-func (c *CloudClient) GetVmwareGpuModelList(ctx context.Context, locationID *int) ([]*entities.VmwareGpuModel, error) {
+// GetVmwareGpuModelList returns the GPU models, optionally filtered by location.
+//
+// SDK-5: pointers intentionally kept for the optional int filter.
+func (c *CloudClient) GetVmwareGpuModelList(ctx context.Context, locationID *int) ([]*entities.VmwareGPUModel, error) {
+	// SDK-4: validate the optional id before sending it.
+	if locationID != nil && *locationID <= 0 {
+		return nil, fmt.Errorf("location ID must be positive")
+	}
 	params := url.Values{}
 	if locationID != nil {
 		params.Set("location_id", strconv.Itoa(*locationID))
@@ -141,12 +169,19 @@ func (c *CloudClient) GetVmwareGpuModelList(ctx context.Context, locationID *int
 	return resp.GpuModels, nil
 }
 
-// GetVmwareTask возвращает статус задачи VMware по её id (строка вида vmw{N}).
+// GetVmwareTask returns the status of a VMware task by its id (a string of the
+// form "vmw{N}").
+//
+// Warning (C-4): VMware task ids ("vmw{N}") live in a separate id space from
+// base tasks and yield a different response shape. Never pass a VMware task id
+// to the base GetTask, and never pass a base task id here.
 func (c *CloudClient) GetVmwareTask(ctx context.Context, taskID string) (*entities.VmwareTask, error) {
+	// SDK-4: GetVmwareTask already validates the empty taskID.
 	if taskID == "" {
 		return nil, fmt.Errorf("task ID is required")
 	}
-	path := fmt.Sprintf("%s/%s", vmwareTasksBaseURL, taskID)
+	// SDK-1: reuse tasksBaseURL from task.go instead of a duplicated constant.
+	path := fmt.Sprintf("%s/%s", tasksBaseURL, taskID)
 	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create vmware task request: %w", err)
@@ -161,18 +196,30 @@ func (c *CloudClient) GetVmwareTask(ctx context.Context, taskID string) (*entiti
 	return resp.Task, nil
 }
 
-// WaitVmwareTask опрашивает задачу VMware до достижения терминального состояния
-// (используя PollingTimeout/PollingInterval из конфигурации клиента).
+// WaitVmwareTask polls a VMware task until it reaches a terminal state, using
+// PollingTimeout/PollingInterval from the client configuration.
+//
+// Warning (C-4): VMware task ids ("vmw{N}") must not be passed to the base
+// WaitServerTaskCompletion, and base task ids must not be passed here — the id
+// spaces and response shapes differ.
 func (c *CloudClient) WaitVmwareTask(ctx context.Context, taskID string) (*entities.VmwareTask, error) {
 	return c.WaitVmwareTaskWithTimeout(ctx, taskID, c.config.PollingTimeout)
 }
 
-// WaitVmwareTaskWithTimeout опрашивает задачу VMware до терминального состояния
-// с указанным таймаутом. Возвращает ошибку, если задача завершилась failed/canceled.
+// WaitVmwareTaskWithTimeout polls a VMware task until it reaches a terminal
+// state within the given timeout. It returns an error if the task finishes in
+// a failed or canceled state.
+//
+// Warning (C-4): VMware task ids ("vmw{N}") must not be passed to the base
+// WaitServerTaskCompletion, and base task ids must not be passed here — the id
+// spaces and response shapes differ.
 func (c *CloudClient) WaitVmwareTaskWithTimeout(ctx context.Context, taskID string, timeout time.Duration) (*entities.VmwareTask, error) {
 	if taskID == "" {
 		return nil, fmt.Errorf("task ID is required")
 	}
+
+	c.logger.Info("Starting to wait for vmware task %s (timeout: %v, interval: %v)",
+		taskID, timeout, c.config.PollingInterval)
 
 	pollingCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -180,30 +227,63 @@ func (c *CloudClient) WaitVmwareTaskWithTimeout(ctx context.Context, taskID stri
 	ticker := time.NewTicker(c.config.PollingInterval)
 	defer ticker.Stop()
 
+	attempt := 0
+	startTime := time.Now()
+
 	for {
+		attempt++
+		c.logger.Debug("Polling attempt %d for vmware task %s", attempt, taskID)
+
 		task, err := c.GetVmwareTask(pollingCtx, taskID)
 		if err != nil {
+			// Check whether the context has expired.
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-				return nil, fmt.Errorf("vmware task %s did not complete within %v: %w", taskID, timeout, err)
+				elapsed := time.Since(startTime)
+				c.logger.Error("Vmware task %s polling timeout after %v (%d attempts)",
+					taskID, elapsed, attempt)
+				return nil, fmt.Errorf("vmware task %s did not complete within %v: %w",
+					taskID, elapsed, err)
 			}
+
+			c.logger.Error("Failed to get vmware task %s status (attempt %d): %v",
+				taskID, attempt, err)
 			return nil, fmt.Errorf("failed to get vmware task %s: %w", taskID, err)
 		}
 
-		if task.IsFailed() || task.State == entities.VmwareTaskStateCanceled {
-			msg := task.State
-			if task.Error != nil && *task.Error != "" {
-				msg = fmt.Sprintf("%s (%s)", task.State, *task.Error)
+		c.logger.Debug("Vmware task %s state: %s (attempt %d, elapsed: %v)",
+			taskID, task.State, attempt, time.Since(startTime))
+
+		// SDK-3 + C-15: use the single IsTerminal() definition to leave the loop,
+		// then classify the terminal state as completed or failed instead of
+		// re-expanding the terminal states inline.
+		if task.IsTerminal() {
+			elapsed := time.Since(startTime)
+			if task.IsCompleted() {
+				c.logger.Info("Vmware task %s completed successfully after %v (%d attempts)",
+					taskID, elapsed, attempt)
+				return task, nil
 			}
-			return task, fmt.Errorf("vmware task %s finished with state %s", taskID, msg)
+			// Terminal but not completed: failed or canceled.
+			state := task.State
+			if task.Error != nil && *task.Error != "" {
+				state = fmt.Sprintf("%s (%s)", task.State, *task.Error)
+			}
+			c.logger.Error("Vmware task %s finished with state %s after %v (%d attempts)",
+				taskID, state, elapsed, attempt)
+			// SDK-3: return task = nil on failure, matching the base package.
+			return nil, fmt.Errorf("vmware task %s finished with state %s", taskID, state)
 		}
-		if task.IsCompleted() {
-			return task, nil
-		}
+
+		// Task is still running, wait for the next iteration.
+		c.logger.Debug("Vmware task %s is still in progress: state=%s", taskID, task.State)
 
 		select {
 		case <-pollingCtx.Done():
+			elapsed := time.Since(startTime)
+			c.logger.Error("Vmware task %s polling timeout after %v (%d attempts, last state: %s)",
+				taskID, elapsed, attempt, task.State)
 			return nil, fmt.Errorf("vmware task %s did not complete within %v (last state: %s): %w",
-				taskID, timeout, task.State, pollingCtx.Err())
+				taskID, elapsed, task.State, pollingCtx.Err())
 		case <-ticker.C:
 			continue
 		}

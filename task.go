@@ -30,7 +30,15 @@ type taskResponseWrap struct {
 	Task *entities.TaskResponse `json:"task,omitempty"`
 }
 
-// GetTask retrieves a specific task by ID
+// GetTask retrieves a specific task by ID.
+//
+// C-4: taskID must be a base task ID (for example "l{N}t{N}", "dns{N}",
+// "k8s_{f|m}{N}"), NOT a VMware task ID (of the form "vmw{N}"). Both kinds share
+// the "tasks/{id}" endpoint, but their response bodies differ: a VMware task with
+// a server_id/network_id carries numeric fields where entities.TaskResponse
+// expects strings, so passing one here fails with an unmarshal error that looks
+// like a broken API; a VMware task without those fields decodes but leaves
+// IsCompleted empty. Use GetVmwareTask for VMware task IDs.
 func (c *CloudClient) GetTask(ctx context.Context, taskID string) (*entities.TaskResponse, error) {
 	path := fmt.Sprintf("%s/%s", tasksBaseURL, taskID)
 
@@ -209,7 +217,13 @@ func (c *CloudClient) WaitServerActiveWithTimeout(ctx context.Context, serverID 
 	}
 }
 
-// WaitServerTaskCompletion waits for task completion and then for server to become Active
+// WaitServerTaskCompletion waits for task completion and then for server to become Active.
+//
+// C-4: taskID must be a base task ID, NOT a VMware task ID ("vmw{N}"). It is polled
+// through GetTask, so a VMware ID either fails with an unmarshal error or, when the
+// VMware task carries no server_id/network_id, leaves IsCompleted empty and hangs
+// the wait until PollingTimeout on an already-finished task. Wait for VMware tasks
+// with WaitVmwareTask instead.
 func (c *CloudClient) WaitServerTaskCompletion(ctx context.Context, serverID string, taskID string) (*entities.Server, error) {
 	// First wait for task to complete
 	if _, err := c.waitTaskCompletion(ctx, taskID); err != nil {
