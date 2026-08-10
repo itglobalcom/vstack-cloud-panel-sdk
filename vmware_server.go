@@ -75,7 +75,7 @@ func (c *CloudClient) GetVmwareServerList(ctx context.Context, locationID *int) 
 
 // GetVmwareServer returns a single VMware server by its id.
 func (c *CloudClient) GetVmwareServer(ctx context.Context, serverID int) (*entities.VmwareServer, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -102,7 +102,7 @@ func (c *CloudClient) CreateVmwareServer(ctx context.Context, req *entities.Vmwa
 	if err := req.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid create vmware server request: %w", err)
 	}
-	// S4: when a GPU is requested the full triple (gpu_model_id, vram_mb,
+	// SDK-S4: when a GPU is requested the full triple (gpu_model_id, vram_mb,
 	// card_count) is mandatory. req.Validate already enforces this, but the check
 	// is made explicit here as the reviewer requested.
 	if req.GPU != nil {
@@ -125,7 +125,7 @@ func (c *CloudClient) CreateVmwareServer(ctx context.Context, req *entities.Vmwa
 // task to complete and returns the created server (C-3).
 //
 // This is a long-running operation: server provisioning takes several minutes
-// (servers-sdk.md, S7), which exceeds the default PollingTimeout of 2 minutes.
+// (servers-sdk.md, SDK-S7), which exceeds the default PollingTimeout of 2 minutes.
 // Configure a larger timeout with WithPollingTimeout when constructing the
 // client, otherwise the wait will time out while the server is still being
 // provisioned.
@@ -162,7 +162,7 @@ func (c *CloudClient) VerifyVmwareServer(ctx context.Context, req *entities.Vmwa
 // ChangeVmwareServerConfiguration changes the CPU, RAM and system disk of a
 // server and returns the id of the background task.
 func (c *CloudClient) ChangeVmwareServerConfiguration(ctx context.Context, serverID int, req *entities.VmwareChangeConfigurationRequest) (*TaskID, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -191,7 +191,7 @@ func (c *CloudClient) ChangeVmwareServerConfiguration(ctx context.Context, serve
 // line with the base RenameServer, so a future second field is not a breaking
 // change.
 func (c *CloudClient) RenameVmwareServer(ctx context.Context, serverID int, req *entities.VmwareRenameServerRequest) error {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return fmt.Errorf("server ID must be greater than 0")
 	}
@@ -215,7 +215,7 @@ func (c *CloudClient) RenameVmwareServer(ctx context.Context, serverID int, req 
 // ChangeVmwareServerComputerName changes the guest OS hostname and returns the
 // id of the background task.
 func (c *CloudClient) ChangeVmwareServerComputerName(ctx context.Context, serverID int, req *entities.VmwareComputerNameRequest) (*TaskID, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -240,7 +240,7 @@ func (c *CloudClient) ChangeVmwareServerComputerName(ctx context.Context, server
 // CopyVmwareServer creates a copy of a server and returns the order (the id of
 // the new server plus the id of the background task).
 func (c *CloudClient) CopyVmwareServer(ctx context.Context, serverID int, req *entities.VmwareCopyServerRequest) (*entities.VmwareServerOrder, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -265,7 +265,7 @@ func (c *CloudClient) CopyVmwareServer(ctx context.Context, serverID int, req *e
 // RebuildVmwareServer rebuilds a server from an image. A NEW server is created,
 // so the returned order carries the new server_id.
 func (c *CloudClient) RebuildVmwareServer(ctx context.Context, serverID int, req *entities.VmwareRebuildServerRequest) (*entities.VmwareServerOrder, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -289,7 +289,7 @@ func (c *CloudClient) RebuildVmwareServer(ctx context.Context, serverID int, req
 
 // DeleteVmwareServer deletes a server and returns the id of the background task.
 func (c *CloudClient) DeleteVmwareServer(ctx context.Context, serverID int) (*TaskID, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -310,7 +310,7 @@ func (c *CloudClient) DeleteVmwareServer(ctx context.Context, serverID int) (*Ta
 // vmwarePower performs a power action on a server and returns the id of the
 // background task.
 func (c *CloudClient) vmwarePower(ctx context.Context, serverID int, action string) (*TaskID, error) {
-	// C-5/S6: validate the id before issuing the request (covers all power methods).
+	// C-5/SDK-S6: validate the id before issuing the request (covers all power methods).
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -360,7 +360,7 @@ func (c *CloudClient) ResetVmwareServer(ctx context.Context, serverID int) (*Tas
 // C-12: renamed from GetVmwareVolumeList to the sub-resource plural form used
 // elsewhere in the package.
 func (c *CloudClient) GetVmwareServerVolumes(ctx context.Context, serverID int) ([]*entities.VmwareVolume, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -378,7 +378,7 @@ func (c *CloudClient) GetVmwareServerVolumes(ctx context.Context, serverID int) 
 
 // GetVmwareVolume returns a single data volume of a server by its id.
 func (c *CloudClient) GetVmwareVolume(ctx context.Context, serverID, volumeID int) (*entities.VmwareVolume, error) {
-	// C-5/S6: validate the ids before issuing the request.
+	// C-5/SDK-S6: validate the ids before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -403,7 +403,7 @@ func (c *CloudClient) GetVmwareVolume(ctx context.Context, serverID, volumeID in
 // CreateVmwareVolume creates a data volume on a server and returns the id of the
 // background task.
 func (c *CloudClient) CreateVmwareVolume(ctx context.Context, serverID int, req *entities.VmwareCreateVolumeRequest) (*TaskID, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -428,7 +428,7 @@ func (c *CloudClient) CreateVmwareVolume(ctx context.Context, serverID int, req 
 // EditVmwareVolume edits a data volume of a server and returns the id of the
 // background task.
 func (c *CloudClient) EditVmwareVolume(ctx context.Context, serverID, volumeID int, req *entities.VmwareEditVolumeRequest) (*TaskID, error) {
-	// C-5/S6: validate the ids before issuing the request.
+	// C-5/SDK-S6: validate the ids before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -456,7 +456,7 @@ func (c *CloudClient) EditVmwareVolume(ctx context.Context, serverID, volumeID i
 // DeleteVmwareVolume deletes a data volume of a server and returns the id of the
 // background task.
 func (c *CloudClient) DeleteVmwareVolume(ctx context.Context, serverID, volumeID int) (*TaskID, error) {
-	// C-5/S6: validate the ids before issuing the request.
+	// C-5/SDK-S6: validate the ids before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -479,7 +479,7 @@ func (c *CloudClient) DeleteVmwareVolume(ctx context.Context, serverID, volumeID
 
 // GetVmwareSnapshot returns the snapshot of a server (a server has at most one).
 func (c *CloudClient) GetVmwareSnapshot(ctx context.Context, serverID int) (*entities.VmwareSnapshot, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -505,7 +505,7 @@ func (c *CloudClient) GetVmwareSnapshot(ctx context.Context, serverID int) (*ent
 // line with the base CreateServerSnapshot, so a future second field is not a
 // breaking change.
 func (c *CloudClient) CreateVmwareSnapshot(ctx context.Context, serverID int, req *entities.VmwareCreateSnapshotRequest) (*TaskID, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -530,7 +530,7 @@ func (c *CloudClient) CreateVmwareSnapshot(ctx context.Context, serverID int, re
 // RestoreVmwareSnapshot restores a server to its snapshot and returns the id of
 // the background task.
 func (c *CloudClient) RestoreVmwareSnapshot(ctx context.Context, serverID int) (*TaskID, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -549,7 +549,7 @@ func (c *CloudClient) RestoreVmwareSnapshot(ctx context.Context, serverID int) (
 // DeleteVmwareSnapshot deletes the snapshot of a server and returns the id of
 // the background task.
 func (c *CloudClient) DeleteVmwareSnapshot(ctx context.Context, serverID int) (*TaskID, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -572,7 +572,7 @@ func (c *CloudClient) DeleteVmwareSnapshot(ctx context.Context, serverID int) (*
 // C-12: renamed from GetVmwareServerNicList to the sub-resource plural form
 // (Nic -> NIC) used elsewhere in the package.
 func (c *CloudClient) GetVmwareServerNICs(ctx context.Context, serverID int) ([]*entities.VmwareNIC, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -591,7 +591,7 @@ func (c *CloudClient) GetVmwareServerNICs(ctx context.Context, serverID int) ([]
 // ConnectVmwareClientNetwork attaches a server to a client network and returns
 // the id of the background task.
 func (c *CloudClient) ConnectVmwareClientNetwork(ctx context.Context, serverID int, req *entities.VmwareConnectClientNetworkRequest) (*TaskID, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -616,7 +616,7 @@ func (c *CloudClient) ConnectVmwareClientNetwork(ctx context.Context, serverID i
 // ConnectVmwareSharedNetwork attaches a server to a shared (public) network and
 // returns the id of the background task.
 func (c *CloudClient) ConnectVmwareSharedNetwork(ctx context.Context, serverID int, req *entities.VmwareConnectSharedNetworkRequest) (*TaskID, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -643,7 +643,7 @@ func (c *CloudClient) ConnectVmwareSharedNetwork(ctx context.Context, serverID i
 //
 // C-12: renamed from UpdateVmwareNic (Nic -> NIC).
 func (c *CloudClient) UpdateVmwareNIC(ctx context.Context, serverID, nicID int, req *entities.VmwareUpdateNICRequest) (*TaskID, error) {
-	// C-5/S6: validate the ids before issuing the request.
+	// C-5/SDK-S6: validate the ids before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -673,7 +673,7 @@ func (c *CloudClient) UpdateVmwareNIC(ctx context.Context, serverID, nicID int, 
 //
 // C-12: renamed from DeleteVmwareNic (Nic -> NIC).
 func (c *CloudClient) DeleteVmwareNIC(ctx context.Context, serverID, nicID int) (*TaskID, error) {
-	// C-5/S6: validate the ids before issuing the request.
+	// C-5/SDK-S6: validate the ids before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -696,18 +696,18 @@ func (c *CloudClient) DeleteVmwareNIC(ctx context.Context, serverID, nicID int) 
 
 // GetVmwareServerFirewall returns the firewall rules of a server.
 //
-// S1: the returned VmwareServerFirewallRule is intentionally incomplete - the
+// SDK-S1: the returned VmwareServerFirewallRule is intentionally incomplete - the
 // public API DTO does not expose the name and traffic_direction fields the
 // backend uses (SRV-1), so through the public API the server firewall can only
 // be cleared, not populated. This is an API-side limitation; do not add fields
 // here that would never reach the backend.
 //
-// S2: a server without rules answers 404, which surfaces as an error for which
+// SDK-S2: a server without rules answers 404, which surfaces as an error for which
 // IsNotFound reports true. For this endpoint a 404 therefore means "no rules OR
 // no such server" - the two cannot be told apart on the SDK side, this is API
 // behaviour (SRV-2).
 func (c *CloudClient) GetVmwareServerFirewall(ctx context.Context, serverID int) ([]*entities.VmwareServerFirewallRule, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -726,18 +726,18 @@ func (c *CloudClient) GetVmwareServerFirewall(ctx context.Context, serverID int)
 // UpdateVmwareServerFirewall atomically replaces the whole server firewall rule
 // set (set semantics).
 //
-// S1: through the public API this method is usable only to CLEAR the firewall
+// SDK-S1: through the public API this method is usable only to CLEAR the firewall
 // (an empty rule set). Any non-empty rule set is rejected with 400 because the
 // public API DTO does not carry the name and traffic_direction fields the
 // backend requires (SRV-1). Do not add those fields here until the API exposes
 // them, otherwise they would never reach the backend.
 //
-// S3: a synchronous response (empty 200 body, which is what clearing the rules
+// SDK-S3: a synchronous response (empty 200 body, which is what clearing the rules
 // returns) carries no task_id. In that case this method returns (nil, nil) so
 // callers do not feed an empty id into WaitVmwareTask; a non-nil TaskID means a
 // background task was actually started.
 func (c *CloudClient) UpdateVmwareServerFirewall(ctx context.Context, serverID int, req *entities.VmwareUpdateServerFirewallRequest) (*TaskID, error) {
-	// C-5/S6: validate the id before issuing the request.
+	// C-5/SDK-S6: validate the id before issuing the request.
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
 	}
@@ -756,7 +756,7 @@ func (c *CloudClient) UpdateVmwareServerFirewall(ctx context.Context, serverID i
 	if err := c.doJSON(httpReq, &task); err != nil {
 		return nil, fmt.Errorf("failed to update firewall of vmware server %d: %w", serverID, err)
 	}
-	// S3: synchronous response (empty body) leaves task_id empty; report it as
+	// SDK-S3: synchronous response (empty body) leaves task_id empty; report it as
 	// "no task" rather than a &TaskID{ID: ""} that would break WaitVmwareTask.
 	if task.ID == "" {
 		return nil, nil

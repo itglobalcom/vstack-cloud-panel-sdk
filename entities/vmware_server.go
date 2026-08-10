@@ -56,10 +56,10 @@ type VmwareServer struct {
 //
 // C-12: Gpu -> GPU.
 //
-// S4: although VramMB and CardCount are pointers with omitempty (suggesting they
+// SDK-S4: although VramMB and CardCount are pointers with omitempty (suggesting they
 // are optional), all three fields are in fact required - the backend looks up a
 // slicing policy by the exact triple (gpu_model_id, vram_mb, card_count) and the
-// order fails without them (servers-sdk.md, S4). The pointer types are kept, but
+// order fails without them (servers-sdk.md, SDK-S4). The pointer types are kept, but
 // Validate requires them to be non-nil.
 type VmwareGPURequest struct {
 	GPUModelID int  `json:"gpu_model_id"` // C-12: Gpu -> GPU
@@ -67,12 +67,12 @@ type VmwareGPURequest struct {
 	CardCount  *int `json:"card_count,omitempty"`
 }
 
-// Validate checks the GPU request. S4: the full triple is mandatory.
+// Validate checks the GPU request. SDK-S4: the full triple is mandatory.
 func (r *VmwareGPURequest) Validate() error {
 	if r.GPUModelID <= 0 {
 		return fmt.Errorf("gpu_model_id is required")
 	}
-	// S4: vram_mb and card_count are mandatory despite the optional-looking pointers.
+	// SDK-S4: vram_mb and card_count are mandatory despite the optional-looking pointers.
 	if r.VramMB == nil {
 		return fmt.Errorf("vram_mb is required")
 	}
@@ -121,7 +121,7 @@ func (r *VmwareCreateServerRequest) Validate() error {
 	if r.SystemDiskSizeMB <= 0 {
 		return fmt.Errorf("system_disk_size_mb must be greater than 0")
 	}
-	// S4: when a GPU is requested, the full triple must be present.
+	// SDK-S4: when a GPU is requested, the full triple must be present.
 	if r.GPU != nil {
 		if err := r.GPU.Validate(); err != nil {
 			return err
@@ -341,11 +341,11 @@ func (r *VmwareUpdateNICRequest) Validate() error {
 
 // VmwareServerFirewallRule represents a single server firewall rule.
 //
-// S1: this type is incomplete against the backend. The backend requires the
+// SDK-S1: this type is incomplete against the backend. The backend requires the
 // additional fields name and traffic_direction, which the public API does not
 // yet expose, so UpdateVmwareServerFirewall with any non-empty rule set is
 // rejected with 400 - the method is currently usable only to clear rules
-// (servers-sdk.md, S1). Align this type once the API is fixed.
+// (servers-sdk.md, SDK-S1). Align this type once the API is fixed.
 type VmwareServerFirewallRule struct {
 	Action          string  `json:"action"`
 	Protocol        string  `json:"protocol"`

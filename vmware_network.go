@@ -67,7 +67,7 @@ func (c *CloudClient) GetVmwareNetworkList(ctx context.Context, locationID *int)
 
 // GetVmwareNetwork retrieves a specific VMware network by ID.
 func (c *CloudClient) GetVmwareNetwork(ctx context.Context, networkID int) (*entities.VmwareNetwork, error) {
-	// N4/C-5: validate the id before issuing the request.
+	// SDK-N4/C-5: validate the id before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}
@@ -186,11 +186,11 @@ func (c *CloudClient) waitVmwareNetworkCreated(ctx context.Context, task *TaskID
 
 // EditVmwareNetwork updates the name/bandwidth of a VMware network.
 //
-// N3: for an isolated network the operation is synchronous - the backend replies 200
+// SDK-N3: for an isolated network the operation is synchronous - the backend replies 200
 // with an empty body and no task_id - so this method returns (nil, nil) in that case.
 // For routed/public networks it returns a non-nil task ID to await.
 func (c *CloudClient) EditVmwareNetwork(ctx context.Context, networkID int, req *entities.VmwareEditNetworkRequest) (*TaskID, error) {
-	// N4/C-5: validate the id before issuing the request.
+	// SDK-N4/C-5: validate the id before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}
@@ -205,7 +205,7 @@ func (c *CloudClient) EditVmwareNetwork(ctx context.Context, networkID int, req 
 	if err := c.doJSON(httpReq, &task); err != nil {
 		return nil, fmt.Errorf("failed to edit vmware network %d: %w", networkID, err)
 	}
-	// N3: an empty task_id means the isolated-network edit completed synchronously;
+	// SDK-N3: an empty task_id means the isolated-network edit completed synchronously;
 	// return (nil, nil) so callers do not await a meaningless empty task.
 	if task.ID == "" {
 		return nil, nil
@@ -215,7 +215,7 @@ func (c *CloudClient) EditVmwareNetwork(ctx context.Context, networkID int, req 
 
 // DeleteVmwareNetwork deletes a VMware network and returns a task ID.
 func (c *CloudClient) DeleteVmwareNetwork(ctx context.Context, networkID int) (*TaskID, error) {
-	// N4/C-5: validate the id before issuing the request.
+	// SDK-N4/C-5: validate the id before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}
@@ -233,7 +233,7 @@ func (c *CloudClient) DeleteVmwareNetwork(ctx context.Context, networkID int) (*
 // ConnectVmwareServers connects a set of servers to a network and returns one task ID
 // per server.
 func (c *CloudClient) ConnectVmwareServers(ctx context.Context, networkID int, req *entities.VmwareConnectServersRequest) ([]string, error) {
-	// N4/C-5: validate the id before issuing the request.
+	// SDK-N4/C-5: validate the id before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}
@@ -258,7 +258,7 @@ func (c *CloudClient) ConnectVmwareServers(ctx context.Context, networkID int, r
 
 // GetVmwareEdgeFirewall retrieves the edge firewall configuration of a VMware network.
 func (c *CloudClient) GetVmwareEdgeFirewall(ctx context.Context, networkID int) (*entities.VmwareEdgeFirewall, error) {
-	// N4/C-5: validate the id before issuing the request.
+	// SDK-N4/C-5: validate the id before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}
@@ -278,19 +278,19 @@ func (c *CloudClient) GetVmwareEdgeFirewall(ctx context.Context, networkID int) 
 
 // UpdateVmwareEdgeFirewall atomically replaces the edge firewall rule set.
 //
-// N5: WARNING - omitting Enabled turns the network firewall OFF on the backend. To guard
+// SDK-N5: WARNING - omitting Enabled turns the network firewall OFF on the backend. To guard
 // against a naive read-modify-write silently disabling protection, Validate requires
 // Enabled and DefaultAction to be set explicitly; populate them from a preceding
 // GetVmwareEdgeFirewall.
 func (c *CloudClient) UpdateVmwareEdgeFirewall(ctx context.Context, networkID int, req *entities.VmwareUpdateEdgeFirewallRequest) (*TaskID, error) {
-	// N4/C-5: validate the id before issuing the request.
+	// SDK-N4/C-5: validate the id before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}
 	if req == nil {
 		return nil, fmt.Errorf("update edge firewall request is required")
 	}
-	// N5: enforce Enabled/DefaultAction presence so a missing enabled cannot disable the firewall.
+	// SDK-N5: enforce Enabled/DefaultAction presence so a missing enabled cannot disable the firewall.
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
@@ -311,7 +311,7 @@ func (c *CloudClient) UpdateVmwareEdgeFirewall(ctx context.Context, networkID in
 //
 // C-12: Nat -> NAT.
 func (c *CloudClient) GetVmwareEdgeNAT(ctx context.Context, networkID int) (*entities.VmwareEdgeNAT, error) {
-	// N4/C-5: validate the id before issuing the request.
+	// SDK-N4/C-5: validate the id before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}
@@ -333,7 +333,7 @@ func (c *CloudClient) GetVmwareEdgeNAT(ctx context.Context, networkID int) (*ent
 //
 // C-12: Nat -> NAT.
 func (c *CloudClient) UpsertVmwareEdgeNATRule(ctx context.Context, networkID int, req *entities.VmwareUpsertNATRuleRequest) (*TaskID, error) {
-	// N4/C-5: validate the id before issuing the request.
+	// SDK-N4/C-5: validate the id before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}
@@ -358,13 +358,13 @@ func (c *CloudClient) UpsertVmwareEdgeNATRule(ctx context.Context, networkID int
 //
 // C-12: Nat -> NAT.
 //
-// N1: currently unusable (API-blocked). The ruleID this method expects is the internal
+// SDK-N1: currently unusable (API-blocked). The ruleID this method expects is the internal
 // database id, but the only id a caller can obtain - VmwareEdgeNATRule.ID from
 // GetVmwareEdgeNAT - is the vCloud object id, which the DELETE endpoint does not accept.
-// There is thus no source for a valid ruleID until the API is fixed (networks-sdk.md, N1,
+// There is thus no source for a valid ruleID until the API is fixed (networks-sdk.md, SDK-N1,
 // networks-api.md, NET-1). The signature is left unchanged deliberately.
 func (c *CloudClient) DeleteVmwareEdgeNATRule(ctx context.Context, networkID, ruleID int) (*TaskID, error) {
-	// N4/C-5: validate the ids before issuing the request.
+	// SDK-N4/C-5: validate the ids before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}
@@ -388,7 +388,7 @@ func (c *CloudClient) DeleteVmwareEdgeNATRule(ctx context.Context, networkID, ru
 //
 // C-12: Vpn -> VPN.
 func (c *CloudClient) GetVmwareEdgeVPN(ctx context.Context, networkID int) (*entities.VmwareEdgeVPN, error) {
-	// N4/C-5: validate the id before issuing the request.
+	// SDK-N4/C-5: validate the id before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}
@@ -410,17 +410,17 @@ func (c *CloudClient) GetVmwareEdgeVPN(ctx context.Context, networkID int) (*ent
 //
 // C-12: Vpn -> VPN.
 //
-// N2: Mtu, DiffieHellmanGroup and EncryptionType are in fact mandatory despite their
+// SDK-N2: Mtu, DiffieHellmanGroup and EncryptionType are in fact mandatory despite their
 // optional-looking tags; Validate enforces their presence before the request is sent.
 func (c *CloudClient) UpsertVmwareEdgeVPNTunnel(ctx context.Context, networkID int, req *entities.VmwareUpsertVPNTunnelRequest) (*TaskID, error) {
-	// N4/C-5: validate the id before issuing the request.
+	// SDK-N4/C-5: validate the id before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}
 	if req == nil {
 		return nil, fmt.Errorf("upsert vpn tunnel request is required")
 	}
-	// N2: require mtu/diffie_hellman_group/encryption_type - the backend rejects the request without them.
+	// SDK-N2: require mtu/diffie_hellman_group/encryption_type - the backend rejects the request without them.
 	if err := req.Validate(); err != nil {
 		return nil, err
 	}
@@ -439,13 +439,13 @@ func (c *CloudClient) UpsertVmwareEdgeVPNTunnel(ctx context.Context, networkID i
 //
 // C-12: Vpn -> VPN.
 //
-// N1: currently unusable (API-blocked). The tunnelID this method expects is the internal
+// SDK-N1: currently unusable (API-blocked). The tunnelID this method expects is the internal
 // database id, but the only id a caller can obtain - VmwareEdgeVPNTunnel.ID from
 // GetVmwareEdgeVPN - is the vCloud object id, which the DELETE endpoint does not accept.
 // There is thus no source for a valid tunnelID until the API is fixed (networks-sdk.md,
-// N1, networks-api.md, NET-1). The signature is left unchanged deliberately.
+// SDK-N1, networks-api.md, NET-1). The signature is left unchanged deliberately.
 func (c *CloudClient) DeleteVmwareEdgeVPNTunnel(ctx context.Context, networkID, tunnelID int) (*TaskID, error) {
-	// N4/C-5: validate the ids before issuing the request.
+	// SDK-N4/C-5: validate the ids before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}
@@ -467,7 +467,7 @@ func (c *CloudClient) DeleteVmwareEdgeVPNTunnel(ctx context.Context, networkID, 
 
 // UpdateVmwareEdgeBandwidth sets the edge uplink bandwidth and returns a task ID.
 func (c *CloudClient) UpdateVmwareEdgeBandwidth(ctx context.Context, networkID int, req *entities.VmwareEdgeBandwidthRequest) (*TaskID, error) {
-	// N4/C-5: validate the id before issuing the request.
+	// SDK-N4/C-5: validate the id before issuing the request.
 	if networkID <= 0 {
 		return nil, fmt.Errorf("network ID must be greater than 0")
 	}

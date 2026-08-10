@@ -26,7 +26,7 @@ type Config struct {
 	// PollingTimeout is the maximum time an "...AndWait" / Wait* call spends polling
 	// a single task before giving up.
 	//
-	// S7: VMware operations run far longer than the 2m default — server create and
+	// SDK-S7: VMware operations run far longer than the 2m default — server create and
 	// copy take ~4 min and rebuild exceeds 12 min. Raise it with WithPollingTimeout
 	// (well above the default) when awaiting those, or they always time out even
 	// though the platform is still working normally.
@@ -64,7 +64,7 @@ func WithPollingInterval(interval time.Duration) Option {
 
 // WithPollingTimeout sets a maximum time for polling operations.
 //
-// S7: pass a value well above the 2m default when awaiting long VMware tasks
+// SDK-S7: pass a value well above the 2m default when awaiting long VMware tasks
 // (server create/copy ~4 min, rebuild > 12 min); see Config.PollingTimeout.
 func WithPollingTimeout(timeout time.Duration) Option {
 	return func(c *Config) {
@@ -144,7 +144,7 @@ func NewConfig(apiKey, baseURL string, opts ...Option) (*Config, error) {
 		BaseURL:         baseURL,
 		Timeout:         DefaultTimeout,
 		PollingInterval: DefaultPollingInterval,
-		// S7: default deliberately kept at 2m. It is a cross-cutting default for the
+		// SDK-S7: default deliberately kept at 2m. It is a cross-cutting default for the
 		// whole SDK, and raising it to cover long VMware operations would not help
 		// anyway — rebuild exceeds even 12m. VMware callers must set a higher value
 		// per call via WithPollingTimeout instead.

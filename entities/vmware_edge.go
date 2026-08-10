@@ -45,10 +45,10 @@ type VmwareUpdateEdgeFirewallRule struct {
 
 // VmwareUpdateEdgeFirewallRequest replaces the full edge firewall configuration.
 //
-// N5: WARNING - omitting Enabled disables the network firewall. The pointer with
+// SDK-N5: WARNING - omitting Enabled disables the network firewall. The pointer with
 // omitempty reads as "leave this field unchanged", but on the backend a missing
 // enabled means false, so a naive read-modify-write ("get firewall, append a
-// rule, write it back") silently turns the firewall off (networks-sdk.md, N5,
+// rule, write it back") silently turns the firewall off (networks-sdk.md, SDK-N5,
 // networks-api.md, NET-13). To guard against this, Validate requires Enabled and
 // DefaultAction to be set explicitly; supply them from a preceding
 // GetVmwareEdgeFirewall.
@@ -60,12 +60,12 @@ type VmwareUpdateEdgeFirewallRequest struct {
 
 // Validate checks the update edge firewall request (C-6).
 func (r *VmwareUpdateEdgeFirewallRequest) Validate() error {
-	// N5: require Enabled explicitly - omitting it disables the firewall on the
+	// SDK-N5: require Enabled explicitly - omitting it disables the firewall on the
 	// backend, so we refuse to send a request that could do so unintentionally.
 	if r.Enabled == nil {
 		return fmt.Errorf("enabled is required: omitting it disables the network firewall")
 	}
-	// N5: default_action must be set explicitly for the same reason.
+	// SDK-N5: default_action must be set explicitly for the same reason.
 	if r.DefaultAction == nil || *r.DefaultAction == "" {
 		return fmt.Errorf("default_action is required")
 	}
@@ -84,10 +84,10 @@ func (r *VmwareUpdateEdgeFirewallRequest) Validate() error {
 //
 // C-12: Nat -> NAT.
 //
-// N1: ID cannot be used to delete this rule. GET returns the vCloud object id,
+// SDK-N1: ID cannot be used to delete this rule. GET returns the vCloud object id,
 // but DELETE expects the internal database id, so the value here is not accepted
 // by DeleteVmwareEdgeNATRule - deleting a NAT rule via the SDK is currently
-// impossible until the API is fixed (networks-sdk.md, N1, networks-api.md, NET-1).
+// impossible until the API is fixed (networks-sdk.md, SDK-N1, networks-api.md, NET-1).
 type VmwareEdgeNATRule struct {
 	ID             *string `json:"id,omitempty"`
 	Description    *string `json:"description,omitempty"`
@@ -142,10 +142,10 @@ func (r *VmwareUpsertNATRuleRequest) Validate() error {
 //
 // C-12: Vpn -> VPN.
 //
-// N1: ID cannot be used to delete this tunnel. GET returns the vCloud object id,
+// SDK-N1: ID cannot be used to delete this tunnel. GET returns the vCloud object id,
 // but DELETE expects the internal database id, so the value here is not accepted
 // by DeleteVmwareEdgeVPNTunnel - deleting a VPN tunnel via the SDK is currently
-// impossible until the API is fixed (networks-sdk.md, N1, networks-api.md, NET-1).
+// impossible until the API is fixed (networks-sdk.md, SDK-N1, networks-api.md, NET-1).
 type VmwareEdgeVPNTunnel struct {
 	ID                    *string  `json:"id,omitempty"`
 	Enabled               *bool    `json:"enabled,omitempty"`
@@ -176,10 +176,10 @@ type VmwareEdgeVPN struct {
 //
 // C-12: Vpn -> VPN.
 //
-// N2: Mtu, EncryptionType and DiffieHellmanGroup are marked optional (pointer /
+// SDK-N2: Mtu, EncryptionType and DiffieHellmanGroup are marked optional (pointer /
 // omitempty) but are in fact mandatory - a request without them is rejected
 // (-12011, -12090) because the backend receives zero values that fail the range
-// and enum checks (networks-sdk.md, N2, networks-api.md, NET-6). Validate
+// and enum checks (networks-sdk.md, SDK-N2, networks-api.md, NET-6). Validate
 // enforces their presence.
 type VmwareUpsertVPNTunnelRequest struct {
 	TunnelID              *int   `json:"tunnel_id,omitempty"`
@@ -206,7 +206,7 @@ func (r *VmwareUpsertVPNTunnelRequest) Validate() error {
 	if r.PeerNetwork == "" || r.PeerEndpoint == "" || r.PeerIdentificator == "" {
 		return fmt.Errorf("peer_network, peer_endpoint and peer_identificator are required")
 	}
-	// N2: mtu, diffie_hellman_group and encryption_type are mandatory despite the
+	// SDK-N2: mtu, diffie_hellman_group and encryption_type are mandatory despite the
 	// optional-looking tags - the backend rejects the request without them.
 	if r.Mtu == nil {
 		return fmt.Errorf("mtu is required")
