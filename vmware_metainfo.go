@@ -196,14 +196,29 @@ func (c *CloudClient) GetVmwareTask(ctx context.Context, taskID string) (*entiti
 	return resp.Task, nil
 }
 
-// WaitVmwareTask polls a VMware task until it reaches a terminal state, using
-// PollingTimeout/PollingInterval from the client configuration.
+// vmwareTaskWaitDefaultTimeout is the default wait applied by WaitVmwareTask.
+// SDK-S7: VMware operations run far longer than the 2m base PollingTimeout
+// default (server create/copy ~4m, rebuild >12m), so VMware task waiting has its
+// own floor. The base PollingTimeout is left unchanged. WithPollingTimeout still
+// overrides upward. Note: rebuild has been measured above 12m and may exceed even
+// 15m — for such operations pass an explicit larger WithPollingTimeout, or call
+// WaitVmwareTaskWithTimeout directly.
+const vmwareTaskWaitDefaultTimeout = 15 * time.Minute
+
+// WaitVmwareTask polls a VMware task until it reaches a terminal state.
+//
+// SDK-S7: the wait defaults to a VMware-specific floor (vmwareTaskWaitDefaultTimeout),
+// not the 2m base PollingTimeout; an explicitly larger WithPollingTimeout wins.
 //
 // Warning (C-4): VMware task ids ("vmw{N}") must not be passed to the base
 // WaitServerTaskCompletion, and base task ids must not be passed here — the id
 // spaces and response shapes differ.
 func (c *CloudClient) WaitVmwareTask(ctx context.Context, taskID string) (*entities.VmwareTask, error) {
-	return c.WaitVmwareTaskWithTimeout(ctx, taskID, c.config.PollingTimeout)
+	timeout := c.config.PollingTimeout
+	if timeout < vmwareTaskWaitDefaultTimeout {
+		timeout = vmwareTaskWaitDefaultTimeout
+	}
+	return c.WaitVmwareTaskWithTimeout(ctx, taskID, timeout)
 }
 
 // WaitVmwareTaskWithTimeout polls a VMware task until it reaches a terminal
