@@ -85,7 +85,10 @@ func (r *VmwareUpdateEdgeFirewallRequest) Validate() error {
 // by DeleteVmwareEdgeNATRule - deleting a NAT rule via the SDK is currently
 // impossible until the API is fixed (networks-sdk.md, SDK-N1, networks-api.md, NET-1).
 type VmwareEdgeNATRule struct {
-	ID             *string `json:"id,omitempty"`
+	// SDK-N1: ID is the internal DB id that DeleteVmwareEdgeNATRule accepts (NET-1, cloudmng);
+	// VcloudID is the vCloud object id, exposed for reference only.
+	ID             *int    `json:"id,omitempty"`
+	VcloudID       *string `json:"vcloud_id,omitempty"`
 	Description    *string `json:"description,omitempty"`
 	Type           *string `json:"type,omitempty"`
 	OriginalIP     *string `json:"original_ip,omitempty"`
@@ -143,7 +146,10 @@ func (r *VmwareUpsertNATRuleRequest) Validate() error {
 // by DeleteVmwareEdgeVPNTunnel - deleting a VPN tunnel via the SDK is currently
 // impossible until the API is fixed (networks-sdk.md, SDK-N1, networks-api.md, NET-1).
 type VmwareEdgeVPNTunnel struct {
-	ID                    *string  `json:"id,omitempty"`
+	// SDK-N1: ID is the internal DB id that DeleteVmwareEdgeVPNTunnel accepts (NET-1); VcloudID is
+	// the vCloud site id, for reference only.
+	ID                    *int     `json:"id,omitempty"`
+	VcloudID              *string  `json:"vcloud_id,omitempty"`
 	Enabled               *bool    `json:"enabled,omitempty"`
 	Name                  *string  `json:"name,omitempty"`
 	Description           *string  `json:"description,omitempty"`

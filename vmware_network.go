@@ -362,11 +362,8 @@ func (c *CloudClient) UpsertVmwareEdgeNATRule(ctx context.Context, networkID int
 //
 // C-12: Nat -> NAT.
 //
-// SDK-N1: currently unusable (API-blocked). The ruleID this method expects is the internal
-// database id, but the only id a caller can obtain - VmwareEdgeNATRule.ID from
-// GetVmwareEdgeNAT - is the vCloud object id, which the DELETE endpoint does not accept.
-// There is thus no source for a valid ruleID until the API is fixed (networks-sdk.md, SDK-N1,
-// networks-api.md, NET-1). The signature is left unchanged deliberately.
+// SDK-N1: ruleID is VmwareEdgeNATRule.ID from GetVmwareEdgeNAT — now the internal DB id that this
+// endpoint accepts (NET-1, cloudmng). The vCloud object id is exposed separately as VcloudID.
 func (c *CloudClient) DeleteVmwareEdgeNATRule(ctx context.Context, networkID, ruleID int) (*TaskID, error) {
 	// SDK-N4/C-5: validate the ids before issuing the request.
 	if networkID <= 0 {
@@ -447,11 +444,8 @@ func (c *CloudClient) UpsertVmwareEdgeVPNTunnel(ctx context.Context, networkID i
 //
 // C-12: Vpn -> VPN.
 //
-// SDK-N1: currently unusable (API-blocked). The tunnelID this method expects is the internal
-// database id, but the only id a caller can obtain - VmwareEdgeVPNTunnel.ID from
-// GetVmwareEdgeVPN - is the vCloud object id, which the DELETE endpoint does not accept.
-// There is thus no source for a valid tunnelID until the API is fixed (networks-sdk.md,
-// SDK-N1, networks-api.md, NET-1). The signature is left unchanged deliberately.
+// SDK-N1: tunnelID is VmwareEdgeVPNTunnel.ID from GetVmwareEdgeVPN — now the internal DB id this
+// endpoint accepts (NET-1, cloudmng). The vCloud site id is exposed separately as VcloudID.
 func (c *CloudClient) DeleteVmwareEdgeVPNTunnel(ctx context.Context, networkID, tunnelID int) (*TaskID, error) {
 	// SDK-N4/C-5: validate the ids before issuing the request.
 	if networkID <= 0 {
