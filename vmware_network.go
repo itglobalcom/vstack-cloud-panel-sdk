@@ -266,14 +266,18 @@ func (c *CloudClient) GetVmwareEdgeFirewall(ctx context.Context, networkID int) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create get edge firewall of vmware network %d request: %w", networkID, err)
 	}
-	// C-10: the edge GET responses (firewall/nat/vpn) are decoded WITHOUT an envelope on
-	// purpose - verified against the backend controllers (VmwareEdgeController.GetFirewall
-	// returns a flat VmwareFirewallResponse via JsonResult, not {"firewall": {...}}).
-	var firewall entities.VmwareEdgeFirewall
-	if err := c.doJSON(req, &firewall); err != nil {
+	// NET-11: edge firewall response is wrapped as {"firewall": {...}} (cloudmng MR !1384),
+	// aligning with the single-key envelope used across the API.
+	var resp struct {
+		Firewall *entities.VmwareEdgeFirewall `json:"firewall,omitempty"`
+	}
+	if err := c.doJSON(req, &resp); err != nil {
 		return nil, fmt.Errorf("failed to get edge firewall of vmware network %d: %w", networkID, err)
 	}
-	return &firewall, nil
+	if resp.Firewall == nil {
+		return nil, fmt.Errorf("edge firewall of vmware network %d not found in response: %w", networkID, ErrNotFound)
+	}
+	return resp.Firewall, nil
 }
 
 // UpdateVmwareEdgeFirewall atomically replaces the edge firewall rule set.
@@ -396,13 +400,17 @@ func (c *CloudClient) GetVmwareEdgeVPN(ctx context.Context, networkID int) (*ent
 	if err != nil {
 		return nil, fmt.Errorf("failed to create get edge vpn of vmware network %d request: %w", networkID, err)
 	}
-	// C-10: decoded WITHOUT an envelope on purpose - VmwareEdgeController.GetVpn returns a
-	// flat VmwareVpnResponse, not {"vpn": {...}}.
-	var vpn entities.VmwareEdgeVPN
-	if err := c.doJSON(req, &vpn); err != nil {
+	// NET-11: edge VPN response is wrapped as {"vpn": {...}} (cloudmng MR !1384).
+	var resp struct {
+		VPN *entities.VmwareEdgeVPN `json:"vpn,omitempty"`
+	}
+	if err := c.doJSON(req, &resp); err != nil {
 		return nil, fmt.Errorf("failed to get edge vpn of vmware network %d: %w", networkID, err)
 	}
-	return &vpn, nil
+	if resp.VPN == nil {
+		return nil, fmt.Errorf("edge vpn of vmware network %d not found in response: %w", networkID, ErrNotFound)
+	}
+	return resp.VPN, nil
 }
 
 // UpsertVmwareEdgeVPNTunnel creates or updates a VPN tunnel (update when tunnel_id is set
