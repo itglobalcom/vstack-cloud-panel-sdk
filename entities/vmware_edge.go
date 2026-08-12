@@ -4,25 +4,21 @@ import "fmt"
 
 // ===================== Edge firewall =====================
 
-// VmwareEdgeFirewallApplication describes the protocol/port matcher of an edge
-// firewall rule.
-type VmwareEdgeFirewallApplication struct {
-	Protocol        *string `json:"protocol,omitempty"`
-	SourcePort      *string `json:"source_port,omitempty"`
-	DestinationPort *string `json:"destination_port,omitempty"`
-}
-
-// VmwareEdgeFirewallRule represents a single edge firewall rule as returned by
-// the API.
+// VmwareEdgeFirewallRule represents a single edge firewall rule.
+//
+// NET-7: flat and symmetric with the write model — the backend expands the vCloud
+// applications[] into one flat rule per protocol+ports, so a read rule round-trips
+// to a write rule. The vCloud-only id and the nested applications are gone.
 type VmwareEdgeFirewallRule struct {
-	ID           *string                         `json:"id,omitempty"`
-	Enabled      *bool                           `json:"enabled,omitempty"`
-	Name         *string                         `json:"name,omitempty"`
-	Description  *string                         `json:"description,omitempty"`
-	Action       *string                         `json:"action,omitempty"`
-	Source       *string                         `json:"source,omitempty"`
-	Destination  *string                         `json:"destination,omitempty"`
-	Applications []VmwareEdgeFirewallApplication `json:"applications,omitempty"`
+	Enabled         *bool   `json:"enabled,omitempty"`
+	Name            *string `json:"name,omitempty"`
+	Description     *string `json:"description,omitempty"`
+	Action          *string `json:"action,omitempty"`
+	Protocol        *string `json:"protocol,omitempty"`
+	Source          *string `json:"source,omitempty"`
+	SourcePort      *string `json:"source_port,omitempty"`
+	Destination     *string `json:"destination,omitempty"`
+	DestinationPort *string `json:"destination_port,omitempty"`
 }
 
 // VmwareEdgeFirewall represents the edge firewall configuration.
