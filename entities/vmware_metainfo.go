@@ -14,6 +14,23 @@ type VmwareLocation struct {
 	ID           int    `json:"id"`
 	TechTitle    string `json:"tech_title"`
 	GPUSupported bool   `json:"gpu_supported"` // C-12: Gpu -> GPU
+	// API-11 redesign: disk types are exposed per location instead of via a
+	// standalone /vmware/disk-types catalog. Limits are in MB to match the
+	// create/verify requests (system_disk_size_mb, size_mb).
+	DiskTypes []*VmwareLocationDiskType `json:"disk_types,omitempty"`
+}
+
+// VmwareLocationDiskType is a disk type offered inside a specific location. The
+// write-side selection key is Title (system_disk_type / disk_type).
+type VmwareLocationDiskType struct {
+	Title                  string `json:"title"`
+	IsDefault              bool   `json:"is_default"`
+	IsSSD                  bool   `json:"is_ssd"`
+	IsAllowedForSystemDisk bool   `json:"is_allowed_for_system_disk"`
+	MinMB                  int    `json:"min_mb"`
+	MaxMB                  int    `json:"max_mb"`
+	StepMB                 int    `json:"step_mb"`
+	DefaultSizeMB          int    `json:"default_size_mb"`
 }
 
 // VmwareImage represents an OS image offered in the VMware catalog.
@@ -23,6 +40,12 @@ type VmwareLocation struct {
 // backend DTO and schema statically; because encoding/json ignores unknown keys,
 // a mismatched field name would yield zero values rather than a decode error.
 // Re-verify against a live response once API-1 is fixed.
+// GPU filter values for GetVmwareImageList (API-11).
+const (
+	VmwareImageGPURequired    = "required"    // only images that require a GPU
+	VmwareImageGPUUnsupported = "unsupported" // only images that cannot use a GPU
+)
+
 type VmwareImage struct {
 	ID                   int    `json:"id"`
 	Name                 string `json:"name"`
@@ -36,27 +59,6 @@ type VmwareImage struct {
 	NICHotRemove         bool   `json:"nic_hot_remove"`          // C-12: Nic -> NIC
 	IsGPUOnly            bool   `json:"is_gpu_only"`             // C-12: Gpu -> GPU
 	SupportedGPUModelIDs []int  `json:"supported_gpu_model_ids"` // C-12: Gpu -> GPU
-}
-
-// VmwareDiskType represents a disk type available for volumes.
-type VmwareDiskType struct {
-	ID                     int    `json:"id"`
-	Title                  string `json:"title"`
-	MinGB                  int    `json:"min_gb"`
-	MaxGB                  int    `json:"max_gb"`
-	StepGB                 int    `json:"step_gb"`
-	StartValueGB           int    `json:"start_value_gb"`
-	IsAllowedForSystemDisk bool   `json:"is_allowed_for_system_disk"`
-	IsSSD                  bool   `json:"is_ssd"`
-}
-
-// VmwareStorageProfile represents a storage profile bound to a disk type.
-type VmwareStorageProfile struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	DiskTypeID  int    `json:"disk_type_id"`
-	IsDefault   bool   `json:"is_default"`
-	FreeSpaceGB int    `json:"free_space_gb"`
 }
 
 // VmwareGPUModel represents one GPU slicing profile.

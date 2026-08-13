@@ -279,12 +279,13 @@ func (r *VmwareCreateSnapshotRequest) Validate() error {
 //
 // C-12: Nic -> NIC.
 type VmwareNIC struct {
-	ID        int     `json:"id"`
-	Number    int     `json:"number"`
-	IsPrimary bool    `json:"is_primary"`
-	NetworkID int     `json:"network_id"`
-	IP        *string `json:"ip,omitempty"`
-	Mac       string  `json:"mac"`
+	ID            int     `json:"id"`
+	Number        int     `json:"number"`
+	IsPrimary     bool    `json:"is_primary"`
+	NetworkID     int     `json:"network_id"`
+	IP            *string `json:"ip,omitempty"`
+	Mac           string  `json:"mac"`
+	BandwidthMbps int     `json:"bandwidth_mbps"` // SRV-5: persisted NIC bandwidth, now surfaced on read
 }
 
 // VmwareConnectClientNetworkRequest represents a request to attach a server to a

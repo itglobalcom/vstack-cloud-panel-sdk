@@ -15,11 +15,9 @@ import (
 // VMware service paths (relative to /api/v1/, which is prepended by buildURL).
 // C-1: comments translated to English.
 const (
-	vmwareLocationsURL       = "vmware/locations"
-	vmwareImagesURL          = "vmware/images"
-	vmwareDiskTypesURL       = "vmware/disk-types"
-	vmwareStorageProfilesURL = "vmware/storage-profiles"
-	vmwareGPUModelsURL       = "vmware/gpu-models"
+	vmwareLocationsURL = "vmware/locations"
+	vmwareImagesURL    = "vmware/images"
+	vmwareGPUModelsURL = "vmware/gpu-models"
 	// SDK-1: the dedicated vmwareTasksBaseURL constant was removed; VMware tasks
 	// are served by the shared tasks resource, so tasksBaseURL from task.go is
 	// reused (task ids are strings of the form "vmw{N}").
@@ -32,12 +30,6 @@ type (
 	}
 	vmwareImagesResponse struct {
 		Images []*entities.VmwareImage `json:"images,omitempty"`
-	}
-	vmwareDiskTypesResponse struct {
-		DiskTypes []*entities.VmwareDiskType `json:"disk_types,omitempty"`
-	}
-	vmwareStorageProfilesResponse struct {
-		StorageProfiles []*entities.VmwareStorageProfile `json:"storage_profiles,omitempty"`
 	}
 	vmwareGPUModelsResponse struct {
 		GPUModels []*entities.VmwareGPUModel `json:"gpu_models,omitempty"`
@@ -64,13 +56,12 @@ func (c *CloudClient) GetVmwareLocationList(ctx context.Context) ([]*entities.Vm
 	return resp.Locations, nil
 }
 
-// GetVmwareImageList returns the templates/images, optionally filtered by
-// location and/or restricted to GPU-only images.
+// GetVmwareImageList lists images, optionally filtered by location and GPU support.
 //
-// SDK-5: pointers intentionally kept for optional int/bool filters; 0 is an
-// ambiguous "unset" value for these, so *int/*bool are used to express
-// "filter not set".
-func (c *CloudClient) GetVmwareImageList(ctx context.Context, locationID *int, gpuOnly *bool) ([]*entities.VmwareImage, error) {
+// SDK-5: locationID is a pointer because 0 is an ambiguous "unset" value.
+// API-11: gpu is a three-state filter — VmwareImageGPURequired ("required", GPU-only images),
+// VmwareImageGPUUnsupported ("unsupported", non-GPU images), or nil for no GPU filter.
+func (c *CloudClient) GetVmwareImageList(ctx context.Context, locationID *int, gpu *string) ([]*entities.VmwareImage, error) {
 	// SDK-4: validate the optional id before sending it.
 	if locationID != nil && *locationID <= 0 {
 		return nil, fmt.Errorf("location ID must be positive")
@@ -79,8 +70,8 @@ func (c *CloudClient) GetVmwareImageList(ctx context.Context, locationID *int, g
 	if locationID != nil {
 		params.Set("location_id", strconv.Itoa(*locationID))
 	}
-	if gpuOnly != nil {
-		params.Set("gpu_only", strconv.FormatBool(*gpuOnly))
+	if gpu != nil && *gpu != "" {
+		params.Set("gpu", *gpu)
 	}
 	req, err := c.newRequest(ctx, http.MethodGet, withQuery(vmwareImagesURL, params), nil)
 	if err != nil {
@@ -93,58 +84,9 @@ func (c *CloudClient) GetVmwareImageList(ctx context.Context, locationID *int, g
 	return resp.Images, nil
 }
 
-// GetVmwareDiskTypeList returns the disk types, optionally filtered by location.
-//
-// SDK-5: pointers intentionally kept for the optional int filter.
-func (c *CloudClient) GetVmwareDiskTypeList(ctx context.Context, locationID *int) ([]*entities.VmwareDiskType, error) {
-	// SDK-4: validate the optional id before sending it.
-	if locationID != nil && *locationID <= 0 {
-		return nil, fmt.Errorf("location ID must be positive")
-	}
-	params := url.Values{}
-	if locationID != nil {
-		params.Set("location_id", strconv.Itoa(*locationID))
-	}
-	req, err := c.newRequest(ctx, http.MethodGet, withQuery(vmwareDiskTypesURL, params), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create vmware disk types request: %w", err)
-	}
-	var resp vmwareDiskTypesResponse
-	if err := c.doJSON(req, &resp); err != nil {
-		return nil, fmt.Errorf("failed to list vmware disk types: %w", err)
-	}
-	return resp.DiskTypes, nil
-}
-
-// GetVmwareStorageProfileList returns the storage profiles, optionally filtered
-// by location and/or disk type.
-//
-// SDK-5: pointers intentionally kept for the optional int filters.
-func (c *CloudClient) GetVmwareStorageProfileList(ctx context.Context, locationID *int, diskTypeID *int) ([]*entities.VmwareStorageProfile, error) {
-	// SDK-4: validate the optional ids before sending them.
-	if locationID != nil && *locationID <= 0 {
-		return nil, fmt.Errorf("location ID must be positive")
-	}
-	if diskTypeID != nil && *diskTypeID <= 0 {
-		return nil, fmt.Errorf("disk type ID must be positive")
-	}
-	params := url.Values{}
-	if locationID != nil {
-		params.Set("location_id", strconv.Itoa(*locationID))
-	}
-	if diskTypeID != nil {
-		params.Set("disk_type_id", strconv.Itoa(*diskTypeID))
-	}
-	req, err := c.newRequest(ctx, http.MethodGet, withQuery(vmwareStorageProfilesURL, params), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create vmware storage profiles request: %w", err)
-	}
-	var resp vmwareStorageProfilesResponse
-	if err := c.doJSON(req, &resp); err != nil {
-		return nil, fmt.Errorf("failed to list vmware storage profiles: %w", err)
-	}
-	return resp.StorageProfiles, nil
-}
+// API-11 redesign: GetVmwareDiskTypeList and GetVmwareStorageProfileList were removed.
+// Disk types now travel inside each VmwareLocation (VmwareLocation.DiskTypes), and storage
+// profiles are an internal detail no longer exposed by the public API.
 
 // GetVmwareGPUModelList returns the GPU models, optionally filtered by location.
 //
