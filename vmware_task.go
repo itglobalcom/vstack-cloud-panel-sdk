@@ -187,15 +187,12 @@ func (c *CloudClient) WaitVmwareTaskWithTimeout(ctx context.Context, taskID stri
 					taskID, elapsed, attempt)
 				return task, nil
 			}
-			// Terminal but not completed: failed or canceled.
-			state := task.State
-			if task.Error != nil && *task.Error != "" {
-				state = fmt.Sprintf("%s (%s)", task.State, *task.Error)
-			}
+			// Terminal but not completed: failed or canceled. The unified Task
+			// model carries no error text, so the state is all we can report.
 			c.logger.Error("Vmware task %s finished with state %s after %v (%d attempts)",
-				taskID, state, elapsed, attempt)
+				taskID, task.State, elapsed, attempt)
 			// Return task = nil on failure, matching the base package.
-			return nil, fmt.Errorf("vmware task %s finished with state %s", taskID, state)
+			return nil, fmt.Errorf("vmware task %s finished with state %s", taskID, task.State)
 		}
 
 		// Task is still running, wait for the next iteration.

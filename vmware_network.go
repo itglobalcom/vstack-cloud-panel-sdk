@@ -177,10 +177,16 @@ func (c *CloudClient) waitVmwareNetworkCreated(ctx context.Context, task *Vmware
 	if err != nil {
 		return nil, fmt.Errorf("failed to wait for vmware network creation: %w", err)
 	}
-	if completed == nil || completed.NetworkID == nil {
+	if completed == nil {
 		return nil, fmt.Errorf("network ID not found in vmware task %s result", task.String())
 	}
-	return c.GetVmwareNetwork(ctx, *completed.NetworkID)
+	// The unified Task model carries the created network id in resources[]
+	// (type "network"), not a dedicated network_id field.
+	networkID, ok := completed.NetworkID()
+	if !ok {
+		return nil, fmt.Errorf("network ID not found in vmware task %s result", task.String())
+	}
+	return c.GetVmwareNetwork(ctx, networkID)
 }
 
 // EditVmwareNetwork updates the name and/or bandwidth of a VMware network.

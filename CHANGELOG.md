@@ -35,6 +35,11 @@ compiling.
   `WaitVmwareTaskRef`, `IsVmwareTaskID` and `VmwareTaskIDPrefix`. VMware tasks and base
   tasks share the `GET /tasks/{id}` endpoint but answer with structurally different
   bodies, so the two families are kept apart by type.
+- `VmwareTask` follows the unified Task model: the status is in `State` (wire field
+  `is_completed`, PascalCase enum), and the resources it touched are listed in
+  `Resources` (`[]VmwareTaskResource`) instead of dedicated id fields. `NetworkID()`
+  and `ServerID()` read the created resource id out of `Resources`; `ResourceID` is
+  the general accessor.
 - `VmwareTaskWaitDefaultTimeout` (30 minutes), the floor `WaitVmwareTask` applies
   instead of the 2-minute `PollingTimeout`. VMware operations are long and vary widely
   in duration — the same server order has been measured at 4.5 and 21.5 minutes, and

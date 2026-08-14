@@ -102,10 +102,13 @@ func runVmwareNetworkExample(ctx context.Context, client *sdk.CloudClient) {
 	if !run.check("WaitVmwareTaskRef(isolated create)", err, "isolated network provisioned") {
 		log.Fatalf("isolated network never came up")
 	}
-	if isoDone == nil || isoDone.NetworkID == nil {
+	if isoDone == nil {
 		log.Fatalf("completed task %s carries no network_id", isoTask.String())
 	}
-	isoID := *isoDone.NetworkID
+	isoID, ok := isoDone.NetworkID()
+	if !ok {
+		log.Fatalf("completed task %s carries no network_id", isoTask.String())
+	}
 	createdNetworks = append(createdNetworks, isoID)
 
 	iso, err := client.GetVmwareNetwork(ctx, isoID)
@@ -466,8 +469,10 @@ func runVmwareNetworkExample(ctx context.Context, client *sdk.CloudClient) {
 			run.fail("WaitVmwareTaskRef(public create)", err)
 		} else {
 			run.pass("WaitVmwareTaskRef(public create)", "public network provisioned")
-			if done != nil && done.NetworkID != nil {
-				createdNetworks = append(createdNetworks, *done.NetworkID)
+			if done != nil {
+				if id, ok := done.NetworkID(); ok {
+					createdNetworks = append(createdNetworks, id)
+				}
 			}
 		}
 		pub, err := client.CreateVmwarePublicNetworkAndWait(ctx, &entities.VmwareCreatePublicNetworkRequest{
@@ -500,13 +505,17 @@ func runVmwareNetworkExample(ctx context.Context, client *sdk.CloudClient) {
 		return
 	}
 	tmpDone, err := client.WaitVmwareTaskRef(ctx, tmpTask)
+	var tmpID int
+	var haveTmpID bool
+	if tmpDone != nil {
+		tmpID, haveTmpID = tmpDone.NetworkID()
+	}
 	if !run.check("WaitVmwareTaskRef(routed create)", err, "throwaway network provisioned") ||
-		tmpDone == nil || tmpDone.NetworkID == nil {
+		!haveTmpID {
 		run.skip("DeleteVmwareNetwork", "throwaway network id unknown")
 		run.skip("WaitVmwareNetworkGone", "throwaway network id unknown")
 		return
 	}
-	tmpID := *tmpDone.NetworkID
 
 	delTask, err := client.DeleteVmwareNetwork(ctx, tmpID)
 	if run.check("DeleteVmwareNetwork", err, "task=%s", delTask.String()) {
