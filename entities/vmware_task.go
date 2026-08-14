@@ -4,10 +4,10 @@ package entities
 // part of the public enum.
 const (
 	// VmwareTaskStateNew is a queued task that has not started yet. Part of the
-	// public state enum (SDK-3).
+	// public state enum.
 	VmwareTaskStateNew = "new"
 	// VmwareTaskStateInProgress is a task that is currently running. Part of the
-	// public state enum (SDK-3).
+	// public state enum.
 	VmwareTaskStateInProgress = "in_progress"
 	// VmwareTaskStateCompleted is a task that finished successfully (terminal).
 	VmwareTaskStateCompleted = "completed"

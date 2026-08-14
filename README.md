@@ -107,7 +107,7 @@ The client exposes methods for the following resources:
 - **DNS** zones and records
 - **Gateways**
 - **Affinity groups**
-- **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall), networks (isolated/routed/public), edge (firewall/NAT/VPN/bandwidth) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
+- **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall), networks (isolated/routed/public), edge (firewall/NAT/VPN) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
 - **Project metadata** — locations, images, applications, tasks
 
 Most mutating operations that trigger a background task provide an `...AndWait` variant
@@ -117,11 +117,44 @@ Most mutating operations that trigger a background task provide an `...AndWait` 
 server, err := client.CreateServerAndWait(ctx, &entities.CreateServerRequest{ /* ... */ })
 ```
 
-In the **VMware Cloud** section only the create methods offer this convenience
-(`CreateVmwareServerAndWait` and the `CreateVmware*NetworkAndWait` family). Every other
-VMware mutator returns a task reference that you await explicitly with `WaitVmwareTask`
-(or `WaitVmwareTaskWithTimeout`). VMware task IDs (`vmw{N}`) are a separate namespace from
-base task IDs and must not be passed to `GetTask` / `WaitServerTaskCompletion`.
+The **VMware Cloud** section offers the same variant for every mutator that starts a task —
+creates, edits, deletes, power actions, volumes, snapshots, NICs, firewalls, NAT and VPN:
+
+```go
+server, err := client.CreateVmwareServerAndWait(ctx, &entities.VmwareCreateServerRequest{ /* ... */ })
+fw, err := client.UpdateVmwareEdgeFirewallAndWait(ctx, networkID, &entities.VmwareUpdateEdgeFirewallRequest{ /* ... */ })
+err = client.DeleteVmwareServerAndWait(ctx, serverID)
+```
+
+Three things are worth knowing before driving VMware resources from a control loop such as
+a Terraform provider:
+
+- **Task IDs are typed and separate.** VMware mutators return `*sdk.VmwareTaskID`, base ones
+  return `*sdk.TaskID`, so the two families cannot be mixed up. Where only the bare string
+  travels, `GetTask` and `GetVmwareTask` reject a foreign ID outright instead of misdecoding
+  its body — they share the `GET /tasks/{id}` endpoint but answer with different payloads.
+- **VMware operations run long.** `WaitVmwareTask` applies its own floor,
+  `sdk.VmwareTaskWaitDefaultTimeout` (30 min), rather than the 2 min base `PollingTimeout`.
+  The floor is a minimum: a larger `WithPollingTimeout` raises the wait, a smaller one does
+  not lower it — use `WaitVmwareTaskWithTimeout` to wait for less. Rebuild has been measured
+  at up to ~26 min, which fits the floor with little headroom, so give it a larger timeout.
+- **A create has happened even if the wait fails.** `CreateVmwareServerAndWait`,
+  `CopyVmwareServerAndWait` and `RebuildVmwareServerAndWait` name the new server in their
+  error, because it exists as soon as the request returns. When losing track of a server
+  would matter, use the two-step form (`RebuildVmwareServer` + `WaitVmwareTaskWithTimeout`),
+  which hands the id back directly.
+- **A completed task is not a settled resource.** After a rebuild the task reports completed
+  while the replaced server is still `deleting`. Use `WaitVmwareServerState`,
+  `WaitVmwareServerGone`, `WaitVmwareNetworkState` or `WaitVmwareNetworkGone` when the
+  resource itself has to be ready; `DeleteVmwareServerAndWait` and
+  `DeleteVmwareNetworkAndWait` already do.
+
+Some mutations are answered synchronously, with no task at all — editing an isolated network,
+for one. Those methods return `(nil, nil)`: a nil `*sdk.VmwareTaskID` means "done, nothing to
+await", not an error. `VmwareTaskID.IsZero` is nil-safe.
+
+VMware edge bandwidth is not a separate setting — it is the network's `bandwidth_mbps`, set
+with `EditVmwareNetwork` and read from `VmwareNetwork.BandwidthMbps`.
 
 ## Error handling
 
@@ -146,14 +179,30 @@ cp .env.example .env        # then fill in API_KEY and API_URL
 make example RESOURCE=meta  # read-only, safe to run first
 ```
 
-Available `RESOURCE` values: `meta`, `server`, `network`, `ssh`, `affinity`,
-`dns`, `gateway`, `volume`, `snapshot`, `server_nic`, `race`.
+Available `RESOURCE` values: `meta`, `vmware_meta`, `server`, `network`, `ssh`, `affinity`,
+`dns`, `gateway`, `volume`, `snapshot`, `server_nic`, `race`, `vmware_server`, `vmware_network`.
 
-> **Note:** examples other than `meta` create and delete real (billable) resources.
+> **Note:** examples other than `meta` and `vmware_meta` create and delete real (billable) resources.
 > Use a dedicated test project.
+
+`vmware_meta`, `vmware_server` and `vmware_network` between them call every exported `Vmware*`
+method, each in both forms (raw call plus explicit wait, and `...AndWait`). Each provisions what
+it needs, removes it afterwards, and prints an ok/failed/skipped tally. They accept:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VMWARE_LOCATION` | `minsk` | location `tech_title` to work in (matched case-insensitively) |
+| `VMWARE_IMAGE_ID` | first Linux image | image for the servers being created |
+| `VMWARE_NETWORK_CIDR` | `192.168.94.0` | `/24` base address; the examples bump the third octet |
+| `VMWARE_KEEP` | unset | `1` leaves the created resources in place |
+| `VMWARE_SKIP_LONG` | unset | `1` skips the copy and rebuild steps (~55 min of `vmware_server`) |
+
+`vmware_server` takes roughly 100 minutes end to end because rebuild alone runs ~20 minutes and
+both of its forms are exercised; `VMWARE_SKIP_LONG=1` brings it down to about 40.
 
 ## Documentation
 - Go package docs: <https://pkg.go.dev/github.com/itglobalcom/vstack-cloud-panel-sdk>
+- Release notes: [CHANGELOG.md](CHANGELOG.md)
 
 ## Contributing
 

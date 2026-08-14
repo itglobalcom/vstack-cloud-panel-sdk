@@ -2,7 +2,7 @@ package entities
 
 import "fmt"
 
-// VmwareServer state constants (C-9). These are the values returned in
+// VmwareServer state constants. These are the values returned in
 // VmwareServer.State and form the public state enum.
 const (
 	// VmwareServerStateCreating - the server is being provisioned.
@@ -22,8 +22,6 @@ const (
 )
 
 // VmwareGPU represents the GPU allocation attached to a server.
-//
-// C-12: Gpu -> GPU.
 type VmwareGPU struct {
 	ModelID   int `json:"model_id"`
 	VramMB    int `json:"vram_mb"`
@@ -47,32 +45,29 @@ type VmwareServer struct {
 	// VmToolsInstalled is live-only: it is populated only by Get-by-id and is
 	// absent from list responses.
 	VmToolsInstalled *bool       `json:"vm_tools_installed,omitempty"`
-	GPU              *VmwareGPU  `json:"gpu,omitempty"` // C-12: Gpu -> GPU
-	NICs             []VmwareNIC `json:"nics"`          // C-12: Nic -> NIC
+	GPU              *VmwareGPU  `json:"gpu,omitempty"`
+	NICs             []VmwareNIC `json:"nics"`
 	Created          string      `json:"created"`
 }
 
 // VmwareGPURequest specifies the GPU allocation for a server order.
 //
-// C-12: Gpu -> GPU.
-//
-// SDK-S4: although VramMB and CardCount are pointers with omitempty (suggesting they
+// Although VramMB and CardCount are pointers with omitempty (suggesting they
 // are optional), all three fields are in fact required - the backend looks up a
 // slicing policy by the exact triple (gpu_model_id, vram_mb, card_count) and the
-// order fails without them (servers-sdk.md, SDK-S4). The pointer types are kept, but
+// order fails without them. The pointer types are kept, but
 // Validate requires them to be non-nil.
 type VmwareGPURequest struct {
-	GPUModelID int  `json:"gpu_model_id"` // C-12: Gpu -> GPU
+	GPUModelID int  `json:"gpu_model_id"`
 	VramMB     *int `json:"vram_mb,omitempty"`
 	CardCount  *int `json:"card_count,omitempty"`
 }
 
-// Validate checks the GPU request. SDK-S4: the full triple is mandatory.
+// Validate checks the GPU request: the full triple is mandatory.
 func (r *VmwareGPURequest) Validate() error {
 	if r.GPUModelID <= 0 {
 		return fmt.Errorf("gpu_model_id is required")
 	}
-	// SDK-S4: vram_mb and card_count are mandatory despite the optional-looking pointers.
 	if r.VramMB == nil {
 		return fmt.Errorf("vram_mb is required")
 	}
@@ -98,7 +93,7 @@ type VmwareCreateServerRequest struct {
 	BackupPeriod         *int              `json:"backup_period,omitempty"`
 	SSHKeys              []int             `json:"ssh_keys,omitempty"`
 	NeedSysprep          *bool             `json:"need_sysprep,omitempty"`
-	GPU                  *VmwareGPURequest `json:"gpu,omitempty"` // C-12: Gpu -> GPU
+	GPU                  *VmwareGPURequest `json:"gpu,omitempty"`
 }
 
 // Validate checks the create server request.
@@ -121,7 +116,6 @@ func (r *VmwareCreateServerRequest) Validate() error {
 	if r.SystemDiskSizeMB <= 0 {
 		return fmt.Errorf("system_disk_size_mb must be greater than 0")
 	}
-	// SDK-S4: when a GPU is requested, the full triple must be present.
 	if r.GPU != nil {
 		if err := r.GPU.Validate(); err != nil {
 			return err
@@ -276,8 +270,6 @@ func (r *VmwareCreateSnapshotRequest) Validate() error {
 // ===================== Network interfaces =====================
 
 // VmwareNIC represents a network interface attached to a server.
-//
-// C-12: Nic -> NIC.
 type VmwareNIC struct {
 	ID            int     `json:"id"`
 	Number        int     `json:"number"`
@@ -285,7 +277,7 @@ type VmwareNIC struct {
 	NetworkID     int     `json:"network_id"`
 	IP            *string `json:"ip,omitempty"`
 	Mac           string  `json:"mac"`
-	BandwidthMbps int     `json:"bandwidth_mbps"` // SRV-5: persisted NIC bandwidth, now surfaced on read
+	BandwidthMbps int     `json:"bandwidth_mbps"` // persisted NIC bandwidth, also returned on read
 }
 
 // VmwareConnectClientNetworkRequest represents a request to attach a server to a
@@ -322,10 +314,22 @@ func (r *VmwareConnectSharedNetworkRequest) Validate() error {
 
 // VmwareUpdateNICRequest represents a request to update a server network interface.
 //
-// C-12: Nic -> NIC.
+// The two optional fields apply to different kinds of NIC, and sending the wrong
+// one is a 400 rather than a no-op:
+//
+//   - BandwidthMbps is only accepted for a NIC on a shared/public network. On a
+//     client-network NIC (one attached to an isolated or routed network) it is
+//     refused with "The network bandwidth cannot be changed" (-8094).
+//   - IP is only accepted when the target network has DHCP disabled; otherwise the
+//     API answers -8111 "Cannot set an IP address for a network with DHCP enabled".
+//
+// NetworkID is mandatory in every case: the update replaces the NIC's placement, so
+// pass the NIC's current network to keep it where it is.
 type VmwareUpdateNICRequest struct {
-	NetworkID          int    `json:"network_id"`
-	BandwidthMbps      *int   `json:"bandwidth_mbps,omitempty"`
+	NetworkID int `json:"network_id"`
+	// BandwidthMbps applies to shared/public-network NICs only — see above.
+	BandwidthMbps *int `json:"bandwidth_mbps,omitempty"`
+	// IP requires the target network to have DHCP disabled — see above.
 	IP                 string `json:"ip,omitempty"`
 	ForceCustomization *bool  `json:"force_customization,omitempty"`
 }
@@ -335,17 +339,50 @@ func (r *VmwareUpdateNICRequest) Validate() error {
 	if r.NetworkID <= 0 {
 		return fmt.Errorf("network_id is required")
 	}
+	if r.BandwidthMbps != nil && *r.BandwidthMbps <= 0 {
+		return fmt.Errorf("bandwidth_mbps must be greater than 0 when set")
+	}
 	return nil
 }
 
 // ===================== Server firewall =====================
 
-// VmwareServerFirewallRule represents a single server firewall rule.
+// Server firewall traffic directions.
 //
-// SDK-S1: name and traffic_direction are mandatory on the backend and are now
-// exposed by the public API (cloudmng MR !1384), so they are part of this type
-// for both read and write. traffic_direction is the enum name ("Incoming" /
-// "Outgoing"); action/protocol follow the same casing the API returns.
+// The API accepts these case-insensitively and returns them lower
+// case, so writing the constants round-trips exactly. Anything outside the enum is
+// rejected with HTTP 400 and code -2002 ("The request body is not formatted or not
+// specified"), which names neither the field nor the offending value - hence the
+// constants.
+const (
+	// VmwareTrafficDirectionIncoming filters traffic entering the server.
+	VmwareTrafficDirectionIncoming = "incoming"
+	// VmwareTrafficDirectionOutgoing filters traffic leaving the server.
+	VmwareTrafficDirectionOutgoing = "outgoing"
+)
+
+// Server firewall actions.
+const (
+	// VmwareFirewallActionAllow lets matching traffic through.
+	VmwareFirewallActionAllow = "allow"
+	// VmwareFirewallActionDeny drops matching traffic.
+	VmwareFirewallActionDeny = "deny"
+)
+
+// VmwareFirewallProtocolAny matches every protocol in a server firewall rule.
+// Alongside it the usual named protocols ("tcp", "udp", "icmp") are accepted.
+const VmwareFirewallProtocolAny = "any"
+
+// VmwareFirewallAny is the wildcard accepted by the source/destination and port
+// fields of a server firewall rule.
+const VmwareFirewallAny = "any"
+
+// VmwareServerFirewallRule represents a single server firewall rule. The same
+// type is used for read and write: the API round-trips it field for field.
+//
+// name and traffic_direction are mandatory on the backend and are
+// now exposed by the public API, so a full rule set can be both read and
+// written. Use the VmwareTrafficDirection* and VmwareFirewallAction* constants.
 type VmwareServerFirewallRule struct {
 	Name             string  `json:"name"`
 	TrafficDirection string  `json:"traffic_direction"`
@@ -362,12 +399,11 @@ type VmwareUpdateServerFirewallRequest struct {
 	Rules []VmwareServerFirewallRule `json:"rules"`
 }
 
-// Validate checks the update server firewall request (C-6). An empty rule set is
+// Validate checks the update server firewall request. An empty rule set is
 // allowed (it clears the firewall); every provided rule must carry name,
-// traffic_direction and action — all mandatory on the backend (SDK-S1).
+// traffic_direction, action and protocol — all mandatory on the backend.
 func (r *VmwareUpdateServerFirewallRequest) Validate() error {
 	for i, rule := range r.Rules {
-		// SDK-S1 + C-6: name, traffic_direction and action are mandatory per rule.
 		if rule.Name == "" {
 			return fmt.Errorf("rules[%d]: name is required", i)
 		}
@@ -384,3 +420,14 @@ func (r *VmwareUpdateServerFirewallRequest) Validate() error {
 	}
 	return nil
 }
+
+// ===================== Rule set semantics =====================
+//
+// VmwareUpdateServerFirewallRequest replaces the whole rule set, so a
+// read-modify-write must resend every rule it wants to keep. The read type is the
+// same VmwareServerFirewallRule, which makes the round trip a direct copy:
+//
+//	rules, err := client.GetVmwareServerFirewall(ctx, serverID)
+//	// append / edit, then
+//	_, err = client.UpdateVmwareServerFirewall(ctx, serverID,
+//		&entities.VmwareUpdateServerFirewallRequest{Rules: rules})

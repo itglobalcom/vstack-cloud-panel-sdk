@@ -85,7 +85,7 @@ func TestParseAPIError(t *testing.T) {
 		t.Errorf("real format: codes=%v params=%v msg=%q", codes, params, msg)
 	}
 
-	// SDK-5: error_params must be parsed and flattened.
+	// Error_params must be parsed and flattened.
 	codes, params, msg = parseAPIError([]byte(`{"errors":[{"code":-12030,"message":"not found","error_params":[{"name":"server_ids","value":"999999"}]}]}`))
 	if len(codes) != 1 || codes[0] != -12030 || msg != "not found" ||
 		len(params) != 1 || params[0].Name != "server_ids" || params[0].Value != "999999" {
