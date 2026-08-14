@@ -21,6 +21,7 @@ const (
 	RetryAPIErrorCode
 )
 
+// String returns a human-readable name for the retry reason.
 func (r RetryReason) String() string {
 	switch r {
 	case NoRetry:
@@ -46,6 +47,10 @@ type RetryDecision struct {
 // RetryPolicy determines whether a request should be retried
 type RetryPolicy func(resp *http.Response, err error) RetryDecision
 
+// DefaultRetryPolicy is the policy the client uses when none is configured. It
+// retries transport errors, the HTTP statuses in Config.RetryableStatus and the
+// API error codes in Config.RetryableCodes, and honours a Retry-After header when
+// the response carries one.
 func (c *CloudClient) DefaultRetryPolicy(resp *http.Response, err error) RetryDecision {
 	// Network error
 	if err != nil {

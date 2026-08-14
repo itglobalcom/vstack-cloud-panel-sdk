@@ -109,7 +109,7 @@ func (c *CloudClient) Config() Config {
 	return *c.config
 }
 
-// SDK-2: withQuery appends the encoded query parameters to path, returning path
+// WithQuery appends the encoded query parameters to path, returning path
 // unchanged when there are none. It is a general-purpose helper (unrelated to any
 // single resource), so it lives here in client.go rather than in a resource file.
 // buildURL preserves the query string as-is.
@@ -165,22 +165,6 @@ func (c *CloudClient) newRequest(ctx context.Context, method, path string, body 
 	return req, nil
 }
 
-// // do executes the HTTP request and returns the raw response.
-// // The caller is responsible for closing the response body.
-// func (c *CloudClient) do(req *http.Request) (*http.Response, error) {
-// 	c.logger.Info("HTTP Request: %s %s", req.Method, req.URL.String())
-
-// 	resp, err := c.httpClient.Do(req)
-// 	if err != nil {
-// 		c.logger.Error("Request failed: %v", err)
-// 		return nil, fmt.Errorf("request failed: %w", err)
-// 	}
-
-// 	c.logger.Info("HTTP Response: %s", resp.Status)
-
-// 	return resp, nil
-// }
-
 // doJSON executes the HTTP request, handles errors, and unmarshals JSON response.
 // This method automatically closes the response body.
 func (c *CloudClient) doJSON(req *http.Request, result any) error {
@@ -199,7 +183,7 @@ func (c *CloudClient) doJSON(req *http.Request, result any) error {
 
 	// Check for HTTP errors
 	if resp.StatusCode >= 400 {
-		// SDK-5: propagate error_params alongside codes/message.
+		// Propagate error_params alongside codes/message.
 		codes, params, message := parseAPIError(body)
 		return &RequestError{
 			Status:      resp.Status,

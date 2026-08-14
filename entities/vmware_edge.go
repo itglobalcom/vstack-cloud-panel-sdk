@@ -4,11 +4,39 @@ import "fmt"
 
 // ===================== Edge firewall =====================
 
-// VmwareEdgeFirewallRule represents a single edge firewall rule.
+// Edge firewall action / default-action values.
 //
-// NET-7: flat and symmetric with the write model — the backend expands the vCloud
-// applications[] into one flat rule per protocol+ports, so a read rule round-trips
-// to a write rule. The vCloud-only id and the nested applications are gone.
+// The API normalizes enum values to lower case on read and accepts them
+// case-insensitively on write, so writing these constants round-trips exactly.
+const (
+	// VmwareEdgeFirewallActionAllow lets matching traffic through.
+	VmwareEdgeFirewallActionAllow = "allow"
+	// VmwareEdgeFirewallActionDeny drops matching traffic.
+	VmwareEdgeFirewallActionDeny = "deny"
+)
+
+// VmwareEdgeFirewallProtocolAny matches every protocol in an edge firewall rule.
+// Alongside it the usual named protocols ("tcp", "udp", "icmp") are accepted; the
+// API contract is the authority on the full set.
+const VmwareEdgeFirewallProtocolAny = "any"
+
+// VmwareEdgeFirewallAny is the wildcard accepted by the source/destination and
+// port fields of an edge firewall rule.
+const VmwareEdgeFirewallAny = "any"
+
+// VmwareEdgeFirewallRule represents a single edge firewall rule as returned by
+// the API.
+//
+// Flat and symmetric with the write model — the backend expands the vCloud
+// applications[] into one flat rule per protocol+ports, so a read rule maps
+// one-to-one onto a write rule. The vCloud-only id and the nested applications
+// are gone.
+//
+// Enabled and Description are read-only in practice: the backend derives
+// Description from the rule name and forces Enabled to true, ignoring whatever
+// the update request carried. That is why
+// VmwareUpdateEdgeFirewallRule deliberately has no such fields — offering them
+// would promise a round trip the API does not perform.
 type VmwareEdgeFirewallRule struct {
 	Enabled         *bool   `json:"enabled,omitempty"`
 	Name            *string `json:"name,omitempty"`
@@ -29,6 +57,9 @@ type VmwareEdgeFirewall struct {
 }
 
 // VmwareUpdateEdgeFirewallRule represents a single rule in an edge firewall update.
+//
+// This mirrors the read rule minus the two fields the backend does not
+// accept from the client (enabled, description) — see VmwareEdgeFirewallRule.
 type VmwareUpdateEdgeFirewallRule struct {
 	Name            *string `json:"name,omitempty"`
 	Action          string  `json:"action"`
@@ -39,34 +70,29 @@ type VmwareUpdateEdgeFirewallRule struct {
 	DestinationPort *string `json:"destination_port,omitempty"`
 }
 
-// VmwareUpdateEdgeFirewallRequest replaces the full edge firewall configuration.
+// VmwareUpdateEdgeFirewallRequest replaces the full edge firewall rule set.
 //
-// SDK-N5: WARNING - omitting Enabled disables the network firewall. The pointer with
-// omitempty reads as "leave this field unchanged", but on the backend a missing
-// enabled means false, so a naive read-modify-write ("get firewall, append a
-// rule, write it back") silently turns the firewall off (networks-sdk.md, SDK-N5,
-// networks-api.md, NET-13). To guard against this, Validate requires Enabled and
-// DefaultAction to be set explicitly; supply them from a preceding
-// GetVmwareEdgeFirewall.
+// Enabled and DefaultAction mean exactly what their pointer+omitempty tags
+// promise: omitting a field leaves the current value alone. An update that carries
+// only Rules keeps enabled and default_action as they were.
+//
+// Rules keeps set semantics: the submitted slice replaces the whole rule set, so
+// a read-modify-write must resend the rules it wants to keep. An empty (or nil)
+// Rules clears them.
 type VmwareUpdateEdgeFirewallRequest struct {
 	Enabled       *bool                          `json:"enabled,omitempty"`
 	DefaultAction *string                        `json:"default_action,omitempty"`
 	Rules         []VmwareUpdateEdgeFirewallRule `json:"rules"`
 }
 
-// Validate checks the update edge firewall request (C-6).
+// Validate checks the update edge firewall request. Enabled and
+// DefaultAction are genuinely optional; every provided rule must carry
+// an action, which the backend requires.
 func (r *VmwareUpdateEdgeFirewallRequest) Validate() error {
-	// SDK-N5: require Enabled explicitly - omitting it disables the firewall on the
-	// backend, so we refuse to send a request that could do so unintentionally.
-	if r.Enabled == nil {
-		return fmt.Errorf("enabled is required: omitting it disables the network firewall")
-	}
-	// SDK-N5: default_action must be set explicitly for the same reason.
-	if r.DefaultAction == nil || *r.DefaultAction == "" {
-		return fmt.Errorf("default_action is required")
+	if r.DefaultAction != nil && *r.DefaultAction == "" {
+		return fmt.Errorf("default_action must not be empty when set")
 	}
 	for i, rule := range r.Rules {
-		// C-6: action is a mandatory field of every firewall rule.
 		if rule.Action == "" {
 			return fmt.Errorf("rules[%d]: action is required", i)
 		}
@@ -76,22 +102,31 @@ func (r *VmwareUpdateEdgeFirewallRequest) Validate() error {
 
 // ===================== Edge NAT =====================
 
+// Edge NAT rule types. The API accepts them case-insensitively and returns them
+// lower case.
+const (
+	// VmwareEdgeNATTypeDNAT translates an inbound connection to an internal
+	// address (destination NAT / port forwarding).
+	VmwareEdgeNATTypeDNAT = "dnat"
+	// VmwareEdgeNATTypeSNAT translates outbound traffic from an internal subnet
+	// to the edge external address (source NAT).
+	VmwareEdgeNATTypeSNAT = "snat"
+)
+
 // VmwareEdgeNATRule represents a single NAT rule as returned by the API.
-//
-// C-12: Nat -> NAT.
-//
-// SDK-N1: ID cannot be used to delete this rule. GET returns the vCloud object id,
-// but DELETE expects the internal database id, so the value here is not accepted
-// by DeleteVmwareEdgeNATRule - deleting a NAT rule via the SDK is currently
-// impossible until the API is fixed (networks-sdk.md, SDK-N1, networks-api.md, NET-1).
 type VmwareEdgeNATRule struct {
-	// SDK-N1: ID is the internal DB id that DeleteVmwareEdgeNATRule accepts (NET-1, cloudmng);
-	// VcloudID is the vCloud object id, exposed for reference only.
-	ID             *int    `json:"id,omitempty"`
-	VcloudID       *string `json:"vcloud_id,omitempty"`
+	// ID is the internal database id, and the value DeleteVmwareEdgeNATRule expects.
+	// VcloudID is the id of the same rule as a vCloud object, for reference only —
+	// it is not accepted by any endpoint.
+	ID       *int    `json:"id,omitempty"`
+	VcloudID *string `json:"vcloud_id,omitempty"`
+	// OriginalIP is normalized by the backend: for a DNAT rule it is replaced with
+	// the external address of the edge gateway, whatever the request sent. A caller
+	// that compares a written value against the read one — a Terraform provider
+	// diffing state — must expect this substitution.
+	OriginalIP     *string `json:"original_ip,omitempty"`
 	Description    *string `json:"description,omitempty"`
 	Type           *string `json:"type,omitempty"`
-	OriginalIP     *string `json:"original_ip,omitempty"`
 	TranslatedIP   *string `json:"translated_ip,omitempty"`
 	Protocol       *string `json:"protocol,omitempty"`
 	OriginalPort   *string `json:"original_port,omitempty"`
@@ -101,20 +136,26 @@ type VmwareEdgeNATRule struct {
 
 // VmwareEdgeNAT represents the edge NAT configuration.
 //
-// C-12: Nat -> NAT.
+// The API returns this one flat, as {"rules": [...]}, without the
+// single-key envelope the firewall and VPN responses use.
 type VmwareEdgeNAT struct {
 	Rules []VmwareEdgeNATRule `json:"rules"`
 }
 
 // VmwareUpsertNATRuleRequest represents a request to create or update a NAT rule.
 //
-// C-12: Nat -> NAT.
+// A rule is created enabled unless Enabled says otherwise, and on
+// update an omitted Enabled leaves the current value alone.
 type VmwareUpsertNATRuleRequest struct {
-	RuleID         *int   `json:"rule_id,omitempty"`
-	Type           string `json:"type"`
+	// RuleID selects an existing rule to update (VmwareEdgeNATRule.ID). Leave it
+	// nil to create a new rule.
+	RuleID *int   `json:"rule_id,omitempty"`
+	Type   string `json:"type"`
+	// OriginalIP is ignored for DNAT rules and replaced with the edge external
+	// address - see VmwareEdgeNATRule.OriginalIP.
+	OriginalIP     string `json:"original_ip"`
 	Description    string `json:"description,omitempty"`
 	Protocol       string `json:"protocol"`
-	OriginalIP     string `json:"original_ip"`
 	OriginalPort   string `json:"original_port,omitempty"`
 	TranslatedIP   string `json:"translated_ip"`
 	TranslatedPort string `json:"translated_port,omitempty"`
@@ -132,22 +173,54 @@ func (r *VmwareUpsertNATRuleRequest) Validate() error {
 	if r.OriginalIP == "" || r.TranslatedIP == "" {
 		return fmt.Errorf("original_ip and translated_ip are required")
 	}
+	if r.RuleID != nil && *r.RuleID <= 0 {
+		return fmt.Errorf("rule_id must be greater than 0 when set")
+	}
 	return nil
 }
 
 // ===================== Edge VPN =====================
 
+// Edge VPN encryption types. Observed on the live API; the contract is the
+// authority on the full set.
+const (
+	VmwareEdgeVPNEncryptionAES     = "aes"
+	VmwareEdgeVPNEncryptionAES256  = "aes256"
+	VmwareEdgeVPNEncryptionAESGCM  = "aesgcm"
+	VmwareEdgeVPNEncryptionTripDES = "tripledes"
+)
+
+// Edge VPN Diffie-Hellman groups.
+//
+// The API accepts these case-insensitively on write but
+// returns them UPPER case on read - "dh14" written comes back as "DH14". A caller
+// that diffs a written value against the read one must compare case-insensitively.
+const (
+	VmwareEdgeVPNDiffieHellmanGroup2  = "dh2"
+	VmwareEdgeVPNDiffieHellmanGroup5  = "dh5"
+	VmwareEdgeVPNDiffieHellmanGroup14 = "dh14"
+	VmwareEdgeVPNDiffieHellmanGroup15 = "dh15"
+	VmwareEdgeVPNDiffieHellmanGroup16 = "dh16"
+)
+
+// VmwareEdgeVPNSharedKeyMinLength and VmwareEdgeVPNSharedKeyMaxLength bound the
+// IPsec pre-shared key. The backend also requires at least one upper-case letter,
+// one lower-case letter and one digit (error -12013).
+const (
+	VmwareEdgeVPNSharedKeyMinLength = 32
+	VmwareEdgeVPNSharedKeyMaxLength = 128
+)
+
 // VmwareEdgeVPNTunnel represents a single IPsec VPN tunnel as returned by the API.
 //
-// C-12: Vpn -> VPN.
-//
-// SDK-N1: ID cannot be used to delete this tunnel. GET returns the vCloud object id,
-// but DELETE expects the internal database id, so the value here is not accepted
-// by DeleteVmwareEdgeVPNTunnel - deleting a VPN tunnel via the SDK is currently
-// impossible until the API is fixed (networks-sdk.md, SDK-N1, networks-api.md, NET-1).
+// The read model is not symmetric with the write model.
+// PeerSubnets is a list here while VmwareUpsertVPNTunnelRequest.PeerNetwork is a
+// single string; LocalID, LocalIP, LocalSubnets, Description and DigestAlgorithm
+// are derived by the backend and cannot be set; DiffieHellmanGroup comes back
+// upper case. Compare read against written values accordingly.
 type VmwareEdgeVPNTunnel struct {
-	// SDK-N1: ID is the internal DB id that DeleteVmwareEdgeVPNTunnel accepts (NET-1); VcloudID is
-	// the vCloud site id, for reference only.
+	// ID is the internal database id, and the value DeleteVmwareEdgeVPNTunnel
+	// expects. VcloudID is the vCloud site id, for reference only.
 	ID                    *int     `json:"id,omitempty"`
 	VcloudID              *string  `json:"vcloud_id,omitempty"`
 	Enabled               *bool    `json:"enabled,omitempty"`
@@ -159,7 +232,7 @@ type VmwareEdgeVPNTunnel struct {
 	PeerIdentificator     *string  `json:"peer_identificator,omitempty"`
 	PeerEndpoint          *string  `json:"peer_endpoint,omitempty"`
 	PeerSubnets           []string `json:"peer_subnets,omitempty"`
-	Mtu                   *int     `json:"mtu,omitempty"`
+	MTU                   *int     `json:"mtu,omitempty"`
 	PerfectForwardSecrecy *bool    `json:"perfect_forward_secrecy,omitempty"`
 	EncryptionType        *string  `json:"encryption_type,omitempty"`
 	DigestAlgorithm       *string  `json:"digest_algorithm,omitempty"`
@@ -167,8 +240,6 @@ type VmwareEdgeVPNTunnel struct {
 }
 
 // VmwareEdgeVPN represents the edge VPN configuration.
-//
-// C-12: Vpn -> VPN.
 type VmwareEdgeVPN struct {
 	Enabled *bool                 `json:"enabled,omitempty"`
 	Tunnels []VmwareEdgeVPNTunnel `json:"tunnels"`
@@ -176,25 +247,31 @@ type VmwareEdgeVPN struct {
 
 // VmwareUpsertVPNTunnelRequest represents a request to create or update a VPN tunnel.
 //
-// C-12: Vpn -> VPN.
-//
-// SDK-N2: Mtu, EncryptionType and DiffieHellmanGroup are marked optional (pointer /
-// omitempty) but are in fact mandatory - a request without them is rejected
-// (-12011, -12090) because the backend receives zero values that fail the range
-// and enum checks (networks-sdk.md, SDK-N2, networks-api.md, NET-6). Validate
-// enforces their presence.
+// MTU, EncryptionType and DiffieHellmanGroup look optional (pointer / omitempty)
+// but are mandatory: omitted, they reach the backend as zero values and fail its
+// range and enum checks (-12011, -12090). Validate enforces their presence so the
+// failure surfaces before the round trip.
 type VmwareUpsertVPNTunnelRequest struct {
-	TunnelID              *int   `json:"tunnel_id,omitempty"`
-	Name                  string `json:"name"`
-	Enabled               *bool  `json:"enabled,omitempty"`
-	Mtu                   *int   `json:"mtu,omitempty"`
-	EncryptionType        string `json:"encryption_type,omitempty"`
-	SharedKey             string `json:"shared_key"`
+	// TunnelID selects an existing tunnel to update (VmwareEdgeVPNTunnel.ID).
+	// Leave it nil to create a new tunnel.
+	TunnelID *int   `json:"tunnel_id,omitempty"`
+	Name     string `json:"name"`
+	Enabled  *bool  `json:"enabled,omitempty"`
+	MTU      *int   `json:"mtu,omitempty"`
+	// EncryptionType is one of the VmwareEdgeVPNEncryption* constants.
+	EncryptionType string `json:"encryption_type,omitempty"`
+	// SharedKey is the IPsec pre-shared key: 32-128 alphanumeric characters with
+	// at least one upper-case letter, one lower-case letter and one digit.
+	SharedKey string `json:"shared_key"`
+	// PeerNetwork is a single subnet in CIDR form. It is read back as the
+	// PeerSubnets list.
 	PeerNetwork           string `json:"peer_network"`
 	PeerEndpoint          string `json:"peer_endpoint"`
 	PeerIdentificator     string `json:"peer_identificator"`
 	PerfectForwardSecrecy *bool  `json:"perfect_forward_secrecy,omitempty"`
-	DiffieHellmanGroup    string `json:"diffie_hellman_group,omitempty"`
+	// DiffieHellmanGroup is one of the VmwareEdgeVPNDiffieHellmanGroup*
+	// constants. It is read back upper case.
+	DiffieHellmanGroup string `json:"diffie_hellman_group,omitempty"`
 }
 
 // Validate checks the upsert VPN tunnel request.
@@ -202,15 +279,15 @@ func (r *VmwareUpsertVPNTunnelRequest) Validate() error {
 	if r.Name == "" {
 		return fmt.Errorf("name is required")
 	}
-	if r.SharedKey == "" {
-		return fmt.Errorf("shared_key is required")
+	if err := validateVmwareVPNSharedKey(r.SharedKey); err != nil {
+		return err
 	}
 	if r.PeerNetwork == "" || r.PeerEndpoint == "" || r.PeerIdentificator == "" {
 		return fmt.Errorf("peer_network, peer_endpoint and peer_identificator are required")
 	}
-	// SDK-N2: mtu, diffie_hellman_group and encryption_type are mandatory despite the
+	// mtu, diffie_hellman_group and encryption_type are mandatory despite the
 	// optional-looking tags - the backend rejects the request without them.
-	if r.Mtu == nil {
+	if r.MTU == nil {
 		return fmt.Errorf("mtu is required")
 	}
 	if r.DiffieHellmanGroup == "" {
@@ -219,20 +296,52 @@ func (r *VmwareUpsertVPNTunnelRequest) Validate() error {
 	if r.EncryptionType == "" {
 		return fmt.Errorf("encryption_type is required")
 	}
+	if r.TunnelID != nil && *r.TunnelID <= 0 {
+		return fmt.Errorf("tunnel_id must be greater than 0 when set")
+	}
+	return nil
+}
+
+// validateVmwareVPNSharedKey mirrors the backend rule behind error -12013, so a
+// bad key is reported locally instead of after a round trip.
+func validateVmwareVPNSharedKey(key string) error {
+	if key == "" {
+		return fmt.Errorf("shared_key is required")
+	}
+	if len(key) < VmwareEdgeVPNSharedKeyMinLength || len(key) > VmwareEdgeVPNSharedKeyMaxLength {
+		return fmt.Errorf("shared_key must be between %d and %d characters long",
+			VmwareEdgeVPNSharedKeyMinLength, VmwareEdgeVPNSharedKeyMaxLength)
+	}
+	var hasUpper, hasLower, hasDigit bool
+	for _, r := range key {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			hasUpper = true
+		case r >= 'a' && r <= 'z':
+			hasLower = true
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		default:
+			return fmt.Errorf("shared_key must be alphanumeric")
+		}
+	}
+	if !hasUpper || !hasLower || !hasDigit {
+		return fmt.Errorf("shared_key must contain at least one upper-case letter, one lower-case letter and one digit")
+	}
 	return nil
 }
 
 // ===================== Edge bandwidth =====================
-
-// VmwareEdgeBandwidthRequest represents a request to set the edge uplink bandwidth.
-type VmwareEdgeBandwidthRequest struct {
-	BandwidthMbps int `json:"bandwidth_mbps"`
-}
-
-// Validate checks the edge bandwidth request.
-func (r *VmwareEdgeBandwidthRequest) Validate() error {
-	if r.BandwidthMbps <= 0 {
-		return fmt.Errorf("bandwidth_mbps must be greater than 0")
-	}
-	return nil
-}
+//
+// VmwareEdgeBandwidthRequest and UpdateVmwareEdgeBandwidth were removed.
+// PUT /vmware/networks/{id}/edge/bandwidth answered 200 and ran its task to
+// completion while persisting nothing: it reshaped the traffic in vCloud but
+// never wrote the value, so the API kept reporting the old bandwidth and the next
+// edit of the network silently reverted the real setting. It also skipped the
+// bandwidth policy check and the NSX-T code path, and there was no way to read the
+// value back (GET answered 405).
+//
+// Edge bandwidth and network bandwidth are the same field: set it with
+// EditVmwareNetwork (VmwareEditNetworkRequest.BandwidthMbps), which validates the
+// value, stores it and shapes the traffic, and read it from
+// VmwareNetwork.BandwidthMbps.

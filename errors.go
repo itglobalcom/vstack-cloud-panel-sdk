@@ -22,12 +22,22 @@ const (
 	// APICodeAffinityGroupNotEmpty — "There must not be any servers in the group":
 	// the group cannot be deleted while it contains servers.
 	APICodeAffinityGroupNotEmpty = -19619
-	// SDK-6: APICodeVmwareLocationNotFound — "Location not found" for an unknown
-	// VMware location_id. The backend returns this as HTTP 400 (not 404), so
+	// APICodeVmwareLocationNotFound — "Location not found" for an unknown
+	// VMware location_id. The backend returns this as HTTP 400 (not 404), and that
+	// is settled behaviour rather than a defect awaiting a fix, so
 	// IsNotFound does NOT recognize it (see the note on IsNotFound). Callers that
-	// need to treat a missing VMware location as not-found should match this code
-	// explicitly via HasAPICode until the API is fixed (backend workaround API-5).
+	// need to treat a missing VMware location as not-found match this code
+	// explicitly — see IsVmwareLocationNotFound.
 	APICodeVmwareLocationNotFound = -8049
+	// APICodeVmwareNoFreePublicNetwork — "There is no free network at the moment":
+	// CreateVmwarePublicNetwork asked for a valid capacity, but the location has no
+	// free public address block left. This is an infrastructure condition rather
+	// than a bad request, and worth telling apart from the neighbouring -12042
+	// ("The capacity of public network is invalid", an unsupported size).
+	APICodeVmwareNoFreePublicNetwork = -12043
+	// APICodeVmwareInvalidPublicNetworkCapacity — "The capacity of public network
+	// is invalid": the requested size is not one the location offers.
+	APICodeVmwareInvalidPublicNetworkCapacity = -12042
 )
 
 // ErrorParam is a single name/value pair from an API error's error_params block.
@@ -47,7 +57,7 @@ type RequestError struct {
 	Body       []byte
 	// Codes — API error codes from the response body ({"errors":[{"code":...}]}).
 	Codes []int
-	// SDK-S5: ErrorParams — the parsed error_params of every error in the response
+	// ErrorParams — the parsed error_params of every error in the response
 	// body, flattened across all entries, in the order the API returned them. For
 	// batch operations (for example ConnectVmwareServers with several NICs) this is
 	// the only way to tell which element failed. Empty when the API sends none.
@@ -91,10 +101,10 @@ var ErrNotFound = errors.New("not found")
 // IsNotFound reports whether err means the requested object does not exist:
 // either an HTTP 404 from the API or a semantic not-found (see ErrNotFound).
 //
-// SDK-6: this intentionally does NOT cover the VMware "Location not found" error
+// This intentionally does NOT cover the VMware "Location not found" error
 // (APICodeVmwareLocationNotFound, -8049), which the backend returns as HTTP 400.
 // Recognizing a 400 as not-found here would be a leaky hack that misclassifies
-// other 400s, so callers must match that code explicitly (see HasAPICode).
+// other 400s, so that case has its own helper — IsVmwareLocationNotFound.
 func IsNotFound(err error) bool {
 	if errors.Is(err, ErrNotFound) {
 		return true
@@ -109,8 +119,39 @@ func IsAlreadyExists(err error) bool {
 }
 
 // IsConflict reports whether err is the transient API conflict error (-4000).
+//
+// The API serializes concurrent changes to one object, so a mutation issued while
+// another is still running on the same server or network is rejected with this
+// code. It is retried automatically (Config.RetryableCodes); this helper is for
+// callers that drive their own sequencing.
 func IsConflict(err error) bool {
 	return HasAPICode(err, APICodeConflict)
+}
+
+// IsNetworkInUse reports whether err is the API "servers are connected to the
+// network" error (-19511) — a network cannot be deleted while servers or gateways
+// are still attached to it.
+func IsNetworkInUse(err error) bool {
+	return HasAPICode(err, APICodeNetworkInUse)
+}
+
+// IsVmwareLocationNotFound reports whether err is the VMware "Location not found"
+// error (-8049).
+//
+// The backend answers an unknown VMware location_id with HTTP 400 rather than
+// 404, deliberately and by contract, so IsNotFound does not cover it. Use this
+// helper to tell "the location is gone" apart from other bad-request failures.
+func IsVmwareLocationNotFound(err error) bool {
+	return HasAPICode(err, APICodeVmwareLocationNotFound)
+}
+
+// IsVmwareNoFreePublicNetwork reports whether err is the VMware "there is no free
+// network at the moment" error (-12043) — the requested public network capacity is
+// valid, but the location has no free address block left. Distinct from
+// APICodeVmwareInvalidPublicNetworkCapacity, which means the size itself is not
+// offered.
+func IsVmwareNoFreePublicNetwork(err error) bool {
+	return HasAPICode(err, APICodeVmwareNoFreePublicNetwork)
 }
 
 // HasAPICode reports whether err carries the given API error code.
@@ -125,7 +166,7 @@ type apiErrorBody struct {
 	Errors []struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
-		// SDK-S5: error_params is part of the documented error envelope
+		// Error_params is part of the documented error envelope
 		// (vmware_error_response) and is preserved here rather than dropped.
 		ErrorParams []ErrorParam `json:"error_params"`
 	} `json:"errors"`
@@ -141,7 +182,7 @@ type legacyErrorBody struct {
 // parseAPIError extracts codes, error_params and a human-readable message from
 // the error body.
 //
-// SDK-S5: params carries the flattened error_params of every error entry, in the
+// Params carries the flattened error_params of every error entry, in the
 // order the API returned them, so batch callers can map a failure to its element.
 func parseAPIError(body []byte) (codes []int, params []ErrorParam, message string) {
 	if len(body) == 0 {
@@ -185,14 +226,18 @@ func parseErrorResponse(body []byte) string {
 	return msg
 }
 
+// ValidationError reports a request that failed the SDK's own checks and was
+// therefore never sent. Errors originating from the API are *RequestError instead.
 type ValidationError struct {
 	Message string
 }
 
+// Error implements the error interface.
 func (e *ValidationError) Error() string {
 	return fmt.Sprintf("validation error: %s", e.Message)
 }
 
+// NewValidationError builds a ValidationError with the given message.
 func NewValidationError(message string) *ValidationError {
 	return &ValidationError{Message: message}
 }

@@ -88,6 +88,8 @@ func main() {
 		runVmwareServerExample(ctx, client)
 	case "vmware_network":
 		runVmwareNetworkExample(ctx, client)
+	case "vmware_meta":
+		runVmwareMetainfoExample(ctx, client)
 	default:
 		fmt.Fprintf(os.Stderr, "Error: Unknown resource type '%s'\n\n", *resource)
 		flag.Usage()

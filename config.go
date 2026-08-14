@@ -26,10 +26,13 @@ type Config struct {
 	// PollingTimeout is the maximum time an "...AndWait" / Wait* call spends polling
 	// a single task before giving up.
 	//
-	// SDK-S7: VMware operations run far longer than the 2m default — server create and
-	// copy take ~4 min and rebuild exceeds 12 min. Raise it with WithPollingTimeout
-	// (well above the default) when awaiting those, or they always time out even
-	// though the platform is still working normally.
+	// VMware operations run far longer than this 2m default — server create
+	// and copy take ~4 min, rebuild up to ~26 min — so VMware task waiting does NOT
+	// use this value as-is: WaitVmwareTask raises it to VmwareTaskWaitDefaultTimeout
+	// when it is smaller. Setting PollingTimeout above that floor still wins, which is
+	// worth doing for rebuild; setting it below has no effect on VMware waits (use
+	// WaitVmwareTaskWithTimeout to wait for less). Base resources use this value
+	// directly.
 	PollingTimeout time.Duration
 	UserAgent      string
 	HTTPClient     *http.Client
@@ -64,8 +67,9 @@ func WithPollingInterval(interval time.Duration) Option {
 
 // WithPollingTimeout sets a maximum time for polling operations.
 //
-// SDK-S7: pass a value well above the 2m default when awaiting long VMware tasks
-// (server create/copy ~4 min, rebuild > 12 min); see Config.PollingTimeout.
+// For VMware tasks this raises the wait but cannot lower it: WaitVmwareTask never
+// waits less than VmwareTaskWaitDefaultTimeout. Raising it above that floor is worth
+// doing for rebuild, whose duration varies widely. See Config.PollingTimeout.
 func WithPollingTimeout(timeout time.Duration) Option {
 	return func(c *Config) {
 		c.PollingTimeout = timeout
@@ -144,10 +148,9 @@ func NewConfig(apiKey, baseURL string, opts ...Option) (*Config, error) {
 		BaseURL:         baseURL,
 		Timeout:         DefaultTimeout,
 		PollingInterval: DefaultPollingInterval,
-		// SDK-S7: default deliberately kept at 2m. It is a cross-cutting default for the
-		// whole SDK, and raising it to cover long VMware operations would not help
-		// anyway — rebuild exceeds even 12m. VMware callers must set a higher value
-		// per call via WithPollingTimeout instead.
+		// Deliberately kept at 2m: it is a cross-cutting default, and base resources
+		// settle well inside it. VMware tasks run far longer, so they do not use this
+		// value as-is — WaitVmwareTask raises it to VmwareTaskWaitDefaultTimeout.
 		PollingTimeout:  2 * time.Minute,
 		UserAgent:       DefaultUserAgent,
 		Logger:          NewNopLogger(),
