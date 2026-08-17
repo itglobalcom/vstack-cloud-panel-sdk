@@ -120,8 +120,9 @@ func (c *CloudClient) CreateGatewayAndWait(ctx context.Context, req *entities.Cr
 		return nil, fmt.Errorf("gateway ID not found in task result")
 	}
 
-	// Get the created gateway
-	return c.GetGateway(ctx, completedTask.GatewayID)
+	// A freshly created gateway is still Busy for a while: return it only once
+	// it is ready for the next change.
+	return c.WaitGatewayActive(ctx, completedTask.GatewayID)
 }
 
 // UpdateGateway updates gateway name
@@ -163,6 +164,13 @@ func (c *CloudClient) DeleteGateway(ctx context.Context, gatewayID string) error
 	}
 
 	if err := c.doJSON(req, nil); err != nil {
+		// Deleting a gateway that is already gone answers HTTP 500, not 404, so a
+		// delete error only counts if the gateway is still there. Re-reading keeps
+		// genuine server-side failures visible.
+		if _, getErr := c.GetGateway(ctx, gatewayID); IsNotFound(getErr) {
+			c.logger.Info("Gateway %s is already gone", gatewayID)
+			return fmt.Errorf("gateway %s: %w", gatewayID, ErrNotFound)
+		}
 		return fmt.Errorf("failed to delete gateway %s: %w", gatewayID, err)
 	}
 
@@ -202,13 +210,13 @@ func (c *CloudClient) UpdateGatewayBandwidthAndWait(ctx context.Context, gateway
 		return nil, err
 	}
 
-	// Wait for task completion
-	if _, err := c.waitTaskCompletion(ctx, task.ID); err != nil {
+	// Wait for the task and for the gateway to be ready for the next change
+	gateway, err := c.WaitGatewayTaskCompletion(ctx, gatewayID, task.ID)
+	if err != nil {
 		return nil, fmt.Errorf("failed to wait for bandwidth update: %w", err)
 	}
 
-	// Get the updated gateway
-	return c.GetGateway(ctx, gatewayID)
+	return gateway, nil
 }
 
 // Power management operations
@@ -240,12 +248,7 @@ func (c *CloudClient) StopGatewayAndWait(ctx context.Context, gatewayID string) 
 		return nil, err
 	}
 
-	// Wait for task completion
-	if _, err := c.waitTaskCompletion(ctx, task.ID); err != nil {
-		return nil, fmt.Errorf("failed to wait for gateway stop: %w", err)
-	}
-
-	return c.GetGateway(ctx, gatewayID)
+	return c.WaitGatewayTaskCompletion(ctx, gatewayID, task.ID)
 }
 
 // StartGateway starts the gateway and returns a task ID
@@ -275,12 +278,7 @@ func (c *CloudClient) StartGatewayAndWait(ctx context.Context, gatewayID string)
 		return nil, err
 	}
 
-	// Wait for task completion
-	if _, err := c.waitTaskCompletion(ctx, task.ID); err != nil {
-		return nil, fmt.Errorf("failed to wait for gateway start: %w", err)
-	}
-
-	return c.GetGateway(ctx, gatewayID)
+	return c.WaitGatewayTaskCompletion(ctx, gatewayID, task.ID)
 }
 
 // RestartGateway restarts the gateway and returns a task ID
@@ -310,12 +308,7 @@ func (c *CloudClient) RestartGatewayAndWait(ctx context.Context, gatewayID strin
 		return nil, err
 	}
 
-	// Wait for task completion
-	if _, err := c.waitTaskCompletion(ctx, task.ID); err != nil {
-		return nil, fmt.Errorf("failed to wait for gateway restart: %w", err)
-	}
-
-	return c.GetGateway(ctx, gatewayID)
+	return c.WaitGatewayTaskCompletion(ctx, gatewayID, task.ID)
 }
 
 // NAT rules operations
@@ -348,6 +341,9 @@ func (c *CloudClient) UpdateNATRules(ctx context.Context, gatewayID string, req 
 	if req == nil {
 		return nil, fmt.Errorf("update NAT rules request is required")
 	}
+	if err := req.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid update NAT rules request: %w", err)
+	}
 
 	path := buildGatewayPath(gatewayID, "nat")
 	httpReq, err := c.newRequest(ctx, http.MethodPut, path, req)
@@ -365,18 +361,63 @@ func (c *CloudClient) UpdateNATRules(ctx context.Context, gatewayID string, req 
 
 // UpdateNATRulesAndWait updates NAT rules and waits for completion
 func (c *CloudClient) UpdateNATRulesAndWait(ctx context.Context, gatewayID string, req *entities.UpdateNATRulesRequest) error {
-	task, err := c.UpdateNATRules(ctx, gatewayID, req)
-	if err != nil {
-		return err
+	return c.replaceRulesAndWait(ctx, gatewayID, "NAT", func() (*TaskID, error) {
+		return c.UpdateNATRules(ctx, gatewayID, req)
+	})
+}
+
+const (
+	// rulesTaskAttempts — how many times a rule-set replacement is attempted when
+	// the backend task fails. Kept at one retry on purpose: a failed task leaves
+	// the gateway rejecting changes (-19803) for minutes, so hammering it only
+	// burns the caller's time. One retry catches the case where the gateway
+	// recovers quickly; beyond that the caller is better off being told to come
+	// back later.
+	rulesTaskAttempts = 2
+	// rulesTaskRetryReadyTimeout — how long to wait for the gateway to accept
+	// changes again before retrying. Deliberately shorter than the full polling
+	// timeout: this runs inside someone's terraform apply.
+	rulesTaskRetryReadyTimeout = 2 * time.Minute
+)
+
+// replaceRulesAndWait sends a rule set and waits for both the task and the
+// gateway to settle, retrying a *failed task*.
+//
+// These endpoints replace the whole list, so re-sending the same payload is
+// safe, and a failed task here is usually transient: the identical payload goes
+// through on the next attempt (observed while other gateways in the same project
+// were being created and destroyed). A task failure carries no error code, so the
+// HTTP-level retry cannot see it — hence the retry lives here.
+func (c *CloudClient) replaceRulesAndWait(ctx context.Context, gatewayID, kind string, send func() (*TaskID, error)) error {
+	var err error
+
+	for attempt := 1; attempt <= rulesTaskAttempts; attempt++ {
+		var task *TaskID
+		task, err = send()
+		if err != nil {
+			return err
+		}
+
+		if _, err = c.WaitGatewayTaskCompletion(ctx, gatewayID, task.ID); err == nil {
+			return nil
+		}
+		if !IsTaskFailed(err) || attempt == rulesTaskAttempts {
+			break
+		}
+
+		c.logger.Info("%s rules task for gateway %s failed (attempt %d/%d), waiting for the gateway before retrying: %v",
+			kind, gatewayID, attempt, rulesTaskAttempts, err)
+
+		// A failed task leaves the gateway rejecting changes for a while, so wait
+		// for it to accept them again instead of re-sending straight away. If it
+		// does not recover in time, stop and report the original failure.
+		if _, waitErr := c.WaitGatewayActiveWithTimeout(ctx, gatewayID, rulesTaskRetryReadyTimeout); waitErr != nil {
+			c.logger.Info("gateway %s did not become ready for a retry: %v", gatewayID, waitErr)
+			break
+		}
 	}
 
-	// Wait for task completion
-	_, err = c.waitTaskCompletion(ctx, task.ID)
-	if err != nil {
-		return fmt.Errorf("failed to wait for NAT rules update: %w", err)
-	}
-
-	return nil
+	return fmt.Errorf("failed to wait for %s rules update: %w", kind, err)
 }
 
 // Firewall rules operations
@@ -409,6 +450,9 @@ func (c *CloudClient) UpdateFirewallRules(ctx context.Context, gatewayID string,
 	if req == nil {
 		return nil, fmt.Errorf("update firewall rules request is required")
 	}
+	if err := req.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid update firewall rules request: %w", err)
+	}
 
 	path := buildGatewayPath(gatewayID, "firewall")
 	httpReq, err := c.newRequest(ctx, http.MethodPut, path, req)
@@ -426,18 +470,9 @@ func (c *CloudClient) UpdateFirewallRules(ctx context.Context, gatewayID string,
 
 // UpdateFirewallRulesAndWait updates firewall rules and waits for completion
 func (c *CloudClient) UpdateFirewallRulesAndWait(ctx context.Context, gatewayID string, req *entities.UpdateFirewallRulesRequest) error {
-	task, err := c.UpdateFirewallRules(ctx, gatewayID, req)
-	if err != nil {
-		return err
-	}
-
-	// Wait for task completion
-	_, err = c.waitTaskCompletion(ctx, task.ID)
-	if err != nil {
-		return fmt.Errorf("failed to wait for firewall rules update: %w", err)
-	}
-
-	return nil
+	return c.replaceRulesAndWait(ctx, gatewayID, "firewall", func() (*TaskID, error) {
+		return c.UpdateFirewallRules(ctx, gatewayID, req)
+	})
 }
 
 // Network operations
@@ -475,9 +510,8 @@ func (c *CloudClient) ConnectNetworkAndWait(ctx context.Context, gatewayID strin
 		return err
 	}
 
-	// Wait for task completion
-	_, err = c.waitTaskCompletion(ctx, task.ID)
-	if err != nil {
+	// Wait for the task and for the gateway to be ready for the next change
+	if _, err := c.WaitGatewayTaskCompletion(ctx, gatewayID, task.ID); err != nil {
 		return fmt.Errorf("failed to wait for network connection: %w", err)
 	}
 
@@ -500,10 +534,29 @@ func (c *CloudClient) DisconnectNetwork(ctx context.Context, gatewayID string, n
 	}
 
 	if err := c.doJSON(req, nil); err != nil {
+		if c.nicGone(ctx, gatewayID, nicID) {
+			return fmt.Errorf("gateway %s NIC %d: %w", gatewayID, nicID, ErrNotFound)
+		}
 		return fmt.Errorf("failed to disconnect network from gateway %s: %w", gatewayID, err)
 	}
 
 	return nil
+}
+
+// nicGone reports whether the NIC — or the whole gateway — no longer exists.
+// Disconnecting a NIC that is already gone answers HTTP 500 rather than 404, so
+// the only way to tell that apart from a real failure is to look.
+func (c *CloudClient) nicGone(ctx context.Context, gatewayID string, nicID int) bool {
+	gateway, err := c.GetGateway(ctx, gatewayID)
+	if err != nil {
+		return IsNotFound(err)
+	}
+	for _, nic := range gateway.NICs {
+		if nic.ID == nicID {
+			return false
+		}
+	}
+	return true
 }
 
 // DisconnectNetworkAndWait disconnects an isolated network from gateway and waits until the NIC is removed
@@ -522,11 +575,23 @@ func (c *CloudClient) DisconnectNetworkAndWait(ctx context.Context, gatewayID st
 	}
 
 	if err := c.doJSON(req, nil); err != nil {
+		if c.nicGone(ctx, gatewayID, nicID) {
+			return fmt.Errorf("gateway %s NIC %d: %w", gatewayID, nicID, ErrNotFound)
+		}
 		return fmt.Errorf("failed to disconnect network from gateway %s: %w", gatewayID, err)
 	}
 
 	// Wait until the NIC disappears from the list
-	return c.waitForNICDeletion(ctx, gatewayID, nicID)
+	if err := c.waitForNICDeletion(ctx, gatewayID, nicID); err != nil {
+		return err
+	}
+
+	// ...and until the gateway itself is ready for the next change.
+	if _, err := c.WaitGatewayActive(ctx, gatewayID); err != nil {
+		return fmt.Errorf("failed to wait for gateway %s after disconnecting NIC %d: %w", gatewayID, nicID, err)
+	}
+
+	return nil
 }
 
 // waitForNICDeletion polls the gateway until the specified NIC is no longer present

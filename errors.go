@@ -72,6 +72,18 @@ func (e *RequestError) HasCode(code int) bool {
 // treats them the same as a 404.
 var ErrNotFound = errors.New("not found")
 
+// ErrTaskFailed — a sentinel for "the API accepted the request and the backend
+// task then failed". Such a failure carries no error code: the task object only
+// reports the status. It is often transient (the same payload succeeds on a
+// retry, typically when the project is busy with other operations on the same
+// kind of object), so callers of idempotent operations can retry on it.
+var ErrTaskFailed = errors.New("backend task failed")
+
+// IsTaskFailed reports whether err is a failed backend task (see ErrTaskFailed).
+func IsTaskFailed(err error) bool {
+	return errors.Is(err, ErrTaskFailed)
+}
+
 // IsNotFound reports whether err means the requested object does not exist:
 // either an HTTP 404 from the API or a semantic not-found (see ErrNotFound).
 func IsNotFound(err error) bool {

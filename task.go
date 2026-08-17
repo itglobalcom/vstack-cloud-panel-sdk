@@ -103,7 +103,7 @@ func (c *CloudClient) waitTaskCompletionWithTimeout(ctx context.Context, taskID 
 			elapsed := time.Since(startTime)
 			c.logger.Error("Task %s failed after %v (%d attempts)",
 				taskID, elapsed, attempt)
-			return nil, fmt.Errorf("task %s failed with status: %s", taskID, task.IsCompleted)
+			return nil, fmt.Errorf("task %s failed with status %s: %w", taskID, task.IsCompleted, ErrTaskFailed)
 
 		default:
 			// Task is still running, wait for next iteration
@@ -218,4 +218,96 @@ func (c *CloudClient) WaitServerTaskCompletion(ctx context.Context, serverID str
 
 	// Then wait for server to become Active
 	return c.WaitServerActive(ctx, serverID)
+}
+
+// WaitGatewayActive waits for a gateway to transition to Active state.
+//
+// A gateway stays Busy for a while after the task of an operation has already
+// completed, and a change issued in that window is either rejected outright
+// (-19803, "a conflict occurred during the competitive change of the object")
+// or accepted and then fails as a task. Waiting for Active is therefore part of
+// completing a gateway operation, not an optional extra — every *AndWait method
+// in gateway.go does it.
+func (c *CloudClient) WaitGatewayActive(ctx context.Context, gatewayID string) (*entities.Gateway, error) {
+	return c.WaitGatewayActiveWithTimeout(ctx, gatewayID, c.config.PollingTimeout)
+}
+
+// WaitGatewayActiveWithTimeout waits for a gateway to become Active with custom timeout
+func (c *CloudClient) WaitGatewayActiveWithTimeout(ctx context.Context, gatewayID string, timeout time.Duration) (*entities.Gateway, error) {
+	if gatewayID == "" {
+		return nil, fmt.Errorf("gateway ID is required")
+	}
+
+	c.logger.Info("Waiting for gateway %s to become Active (timeout: %v, interval: %v)",
+		gatewayID, timeout, c.config.PollingInterval)
+
+	pollingCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(c.config.PollingInterval)
+	defer ticker.Stop()
+
+	attempt := 0
+	startTime := time.Now()
+
+	for {
+		attempt++
+		c.logger.Debug("Polling attempt %d for gateway %s state", attempt, gatewayID)
+
+		gateway, err := c.GetGateway(pollingCtx, gatewayID)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				elapsed := time.Since(startTime)
+				c.logger.Error("Gateway %s state polling timeout after %v (%d attempts)",
+					gatewayID, elapsed, attempt)
+				return nil, fmt.Errorf("gateway %s did not become Active within %v: %w",
+					gatewayID, elapsed, err)
+			}
+
+			c.logger.Error("Failed to get gateway %s status (attempt %d): %v", gatewayID, attempt, err)
+			return nil, fmt.Errorf("failed to get gateway %s: %w", gatewayID, err)
+		}
+
+		c.logger.Debug("Gateway %s state: %s (attempt %d, elapsed: %v)",
+			gatewayID, gateway.State, attempt, time.Since(startTime))
+
+		switch gateway.State {
+		case entities.GatewayStateActive:
+			c.logger.Info("Gateway %s is now Active after %v (%d attempts)",
+				gatewayID, time.Since(startTime), attempt)
+			return gateway, nil
+
+		case entities.GatewayStateBlocked:
+			c.logger.Error("Gateway %s is Blocked after %v (%d attempts)",
+				gatewayID, time.Since(startTime), attempt)
+			return nil, fmt.Errorf("gateway %s is in Blocked state", gatewayID)
+
+		default:
+			// New or Busy — keep waiting.
+			c.logger.Debug("Gateway %s is still in %s state", gatewayID, gateway.State)
+		}
+
+		select {
+		case <-pollingCtx.Done():
+			elapsed := time.Since(startTime)
+			c.logger.Error("Gateway %s state polling timeout after %v (%d attempts, last state: %s)",
+				gatewayID, elapsed, attempt, gateway.State)
+			return nil, fmt.Errorf("gateway %s did not become Active within %v (last state: %s): %w",
+				gatewayID, elapsed, gateway.State, pollingCtx.Err())
+
+		case <-ticker.C:
+			continue
+		}
+	}
+}
+
+// WaitGatewayTaskCompletion waits for task completion and then for the gateway
+// to become Active again, so that the next change to the same gateway is not
+// rejected as a competitive change.
+func (c *CloudClient) WaitGatewayTaskCompletion(ctx context.Context, gatewayID string, taskID string) (*entities.Gateway, error) {
+	if _, err := c.waitTaskCompletion(ctx, taskID); err != nil {
+		return nil, fmt.Errorf("task %s failed: %w", taskID, err)
+	}
+
+	return c.WaitGatewayActive(ctx, gatewayID)
 }
