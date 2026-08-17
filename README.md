@@ -108,12 +108,32 @@ The client exposes methods for the following resources:
 - **Gateways**
 - **Affinity groups**
 - **Project metadata** — locations, images, applications, tasks
+- **VMware catalog** (read-only) — locations, disk types, GPU models, storage profiles, images
 
 Mutating operations that trigger a background task provide an `...AndWait` variant
 (for example `CreateServerAndWait`) that polls the task until it finishes:
 
 ```go
 server, err := client.CreateServerAndWait(ctx, &entities.CreateServerRequest{ /* ... */ })
+```
+
+### VMware catalog
+
+`GetVMwareLocations`, `GetVMwareDiskTypes`, `GetVMwareGPUModels`,
+`GetVMwareStorageProfiles` and `GetVMwareImages` read the lookups of the VMware
+section (`/api/v1/vmware`). They are separate from the vStack lookups
+(`GetLocations`, `GetImages`), which describe a different platform and use string
+identifiers.
+
+The optional `location_id` / `disk_type_id` filters take `0` for "no filter";
+an unknown (but positive) id is rejected by the API with a 400 that
+`sdk.IsInvalidLocation` recognises:
+
+```go
+diskTypes, err := client.GetVMwareDiskTypes(ctx, locationID)
+if sdk.IsInvalidLocation(err) {
+	log.Fatalf("unknown VMware location %d", locationID)
+}
 ```
 
 ## Error handling
@@ -139,10 +159,10 @@ cp .env.example .env        # then fill in API_KEY and API_URL
 make example RESOURCE=meta  # read-only, safe to run first
 ```
 
-Available `RESOURCE` values: `meta`, `server`, `network`, `ssh`, `affinity`,
+Available `RESOURCE` values: `meta`, `vmware`, `server`, `network`, `ssh`, `affinity`,
 `dns`, `gateway`, `volume`, `snapshot`, `server_nic`, `race`.
 
-> **Note:** examples other than `meta` create and delete real (billable) resources.
+> **Note:** examples other than `meta` and `vmware` create and delete real (billable) resources.
 > Use a dedicated test project.
 
 ## Documentation

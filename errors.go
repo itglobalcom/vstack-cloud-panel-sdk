@@ -22,6 +22,10 @@ const (
 	// APICodeAffinityGroupNotEmpty — "There must not be any servers in the group":
 	// the group cannot be deleted while it contains servers.
 	APICodeAffinityGroupNotEmpty = -19619
+	// APICodeDCLocationDoesNotExist — "the data center location does not exist":
+	// the VMware endpoints answer 400 with this code for an unknown
+	// location_id instead of silently returning an empty list.
+	APICodeDCLocationDoesNotExist = -8049
 )
 
 // RequestError represents an HTTP request error with detailed information
@@ -98,6 +102,12 @@ func IsAlreadyExists(err error) bool {
 // IsConflict reports whether err is the transient API conflict error (-4000).
 func IsConflict(err error) bool {
 	return HasAPICode(err, APICodeConflict)
+}
+
+// IsInvalidLocation reports whether err is the API "location does not exist"
+// error (-8049) — the 400 returned for an unknown location_id filter.
+func IsInvalidLocation(err error) bool {
+	return HasAPICode(err, APICodeDCLocationDoesNotExist)
 }
 
 // HasAPICode reports whether err carries the given API error code.
