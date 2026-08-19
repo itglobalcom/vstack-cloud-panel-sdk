@@ -22,22 +22,10 @@ const (
 	// APICodeAffinityGroupNotEmpty — "There must not be any servers in the group":
 	// the group cannot be deleted while it contains servers.
 	APICodeAffinityGroupNotEmpty = -19619
-	// APICodeVmwareLocationNotFound — "Location not found" for an unknown
-	// VMware location_id. The backend returns this as HTTP 400 (not 404), and that
-	// is settled behaviour rather than a defect awaiting a fix, so
-	// IsNotFound does NOT recognize it (see the note on IsNotFound). Callers that
-	// need to treat a missing VMware location as not-found match this code
-	// explicitly — see IsVmwareLocationNotFound.
-	APICodeVmwareLocationNotFound = -8049
-	// APICodeVmwareNoFreePublicNetwork — "There is no free network at the moment":
-	// CreateVmwarePublicNetwork asked for a valid capacity, but the location has no
-	// free public address block left. This is an infrastructure condition rather
-	// than a bad request, and worth telling apart from the neighbouring -12042
-	// ("The capacity of public network is invalid", an unsupported size).
-	APICodeVmwareNoFreePublicNetwork = -12043
-	// APICodeVmwareInvalidPublicNetworkCapacity — "The capacity of public network
-	// is invalid": the requested size is not one the location offers.
-	APICodeVmwareInvalidPublicNetworkCapacity = -12042
+	// APICodeDCLocationDoesNotExist — "the data center location does not exist":
+	// the VMware endpoints answer 400 with this code for an unknown
+	// location_id instead of silently returning an empty list.
+	APICodeDCLocationDoesNotExist = -8049
 )
 
 // ErrorParam is a single name/value pair from an API error's error_params block.
@@ -98,6 +86,18 @@ func (e *RequestError) HasCode(code int) bool {
 // treats them the same as a 404.
 var ErrNotFound = errors.New("not found")
 
+// ErrTaskFailed — a sentinel for "the API accepted the request and the backend
+// task then failed". Such a failure carries no error code: the task object only
+// reports the status. It is often transient (the same payload succeeds on a
+// retry, typically when the project is busy with other operations on the same
+// kind of object), so callers of idempotent operations can retry on it.
+var ErrTaskFailed = errors.New("backend task failed")
+
+// IsTaskFailed reports whether err is a failed backend task (see ErrTaskFailed).
+func IsTaskFailed(err error) bool {
+	return errors.Is(err, ErrTaskFailed)
+}
+
 // IsNotFound reports whether err means the requested object does not exist:
 // either an HTTP 404 from the API or a semantic not-found (see ErrNotFound).
 //
@@ -128,30 +128,10 @@ func IsConflict(err error) bool {
 	return HasAPICode(err, APICodeConflict)
 }
 
-// IsNetworkInUse reports whether err is the API "servers are connected to the
-// network" error (-19511) — a network cannot be deleted while servers or gateways
-// are still attached to it.
-func IsNetworkInUse(err error) bool {
-	return HasAPICode(err, APICodeNetworkInUse)
-}
-
-// IsVmwareLocationNotFound reports whether err is the VMware "Location not found"
-// error (-8049).
-//
-// The backend answers an unknown VMware location_id with HTTP 400 rather than
-// 404, deliberately and by contract, so IsNotFound does not cover it. Use this
-// helper to tell "the location is gone" apart from other bad-request failures.
-func IsVmwareLocationNotFound(err error) bool {
-	return HasAPICode(err, APICodeVmwareLocationNotFound)
-}
-
-// IsVmwareNoFreePublicNetwork reports whether err is the VMware "there is no free
-// network at the moment" error (-12043) — the requested public network capacity is
-// valid, but the location has no free address block left. Distinct from
-// APICodeVmwareInvalidPublicNetworkCapacity, which means the size itself is not
-// offered.
-func IsVmwareNoFreePublicNetwork(err error) bool {
-	return HasAPICode(err, APICodeVmwareNoFreePublicNetwork)
+// IsInvalidLocation reports whether err is the API "location does not exist"
+// error (-8049) — the 400 returned for an unknown location_id filter.
+func IsInvalidLocation(err error) bool {
+	return HasAPICode(err, APICodeDCLocationDoesNotExist)
 }
 
 // HasAPICode reports whether err carries the given API error code.

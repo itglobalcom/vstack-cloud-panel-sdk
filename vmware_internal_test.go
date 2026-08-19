@@ -2,290 +2,260 @@ package sdk
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
 	"net/url"
-	"strings"
 	"testing"
-	"time"
 )
 
-// testClient builds a client that never reaches the network: every case below
-// fails validation before a request is issued.
-func testClient(t *testing.T) *CloudClient {
-	t.Helper()
-	cfg, err := NewConfig("test-key", "https://api.example.com")
+func TestBuildVMwarePath(t *testing.T) {
+	if got := buildVMwarePath(vmwareLocationsPath, nil); got != "vmware/locations" {
+		t.Errorf("no filters: got %q", got)
+	}
+
+	// url.Values.Encode sorts keys, so the path is deterministic.
+	filters := url.Values{}
+	if err := addIDFilter(filters, "location_id", 2); err != nil {
+		t.Fatalf("location_id filter: %v", err)
+	}
+	if err := addIDFilter(filters, "disk_type_id", 7); err != nil {
+		t.Fatalf("disk_type_id filter: %v", err)
+	}
+	want := "vmware/storage-profiles?disk_type_id=7&location_id=2"
+	if got := buildVMwarePath(vmwareStorageProfilesPath, filters); got != want {
+		t.Errorf("both filters: got %q, want %q", got, want)
+	}
+
+	// An empty (but non-nil) set of filters must not add a bare "?".
+	if got := buildVMwarePath(vmwareImagesPath, url.Values{}); got != "vmware/images" {
+		t.Errorf("empty filters: got %q", got)
+	}
+}
+
+// Zero means "not specified" (the API treats an absent parameter as no filter
+// and 0 is not a member of DCLocationEnum), while a negative id is a caller
+// error: dropping it would answer a broken id with the full unfiltered list.
+func TestAddIDFilter(t *testing.T) {
+	filters := url.Values{}
+	if err := addIDFilter(filters, "location_id", 0); err != nil {
+		t.Errorf("zero must mean \"no filter\", got error: %v", err)
+	}
+	if len(filters) != 0 {
+		t.Errorf("zero must not add a filter, got %v", filters)
+	}
+
+	if err := addIDFilter(filters, "disk_type_id", -1); err == nil {
+		t.Error("negative value must be rejected")
+	}
+	if len(filters) != 0 {
+		t.Errorf("rejected value must not be added, got %v", filters)
+	}
+
+	if err := addIDFilter(filters, "location_id", 14); err != nil {
+		t.Fatalf("positive value: %v", err)
+	}
+	if filters.Get("location_id") != "14" {
+		t.Errorf("positive value must be set, got %v", filters)
+	}
+}
+
+// A negative id must fail before the request is built — the caller must not get
+// a full unfiltered list back.
+func TestGetVMwareCatalogRejectsNegativeID(t *testing.T) {
+	config, err := NewConfig("token", "https://api.example.com")
 	if err != nil {
-		t.Fatalf("NewConfig: %v", err)
+		t.Fatalf("config: %v", err)
 	}
-	c, err := NewClient(cfg)
+	client, err := NewClient(config)
 	if err != nil {
-		t.Fatalf("NewClient: %v", err)
+		t.Fatalf("client: %v", err)
 	}
-	return c
-}
-
-func TestIsVmwareTaskID(t *testing.T) {
-	cases := map[string]bool{
-		"vmw198487": true,
-		"vmw1":      true,
-		"vmw":       true,
-		"l1t2":      false,
-		"dns42":     false,
-		"k8s_f7":    false,
-		"":          false,
-		"Vmw1":      false, // the prefix is case-sensitive
-	}
-	for in, want := range cases {
-		if got := IsVmwareTaskID(in); got != want {
-			t.Errorf("IsVmwareTaskID(%q) = %v, want %v", in, got, want)
-		}
-	}
-}
-
-func TestVmwareTaskIDNilSafe(t *testing.T) {
-	var nilRef *VmwareTaskID
-	if !nilRef.IsZero() {
-		t.Error("(*VmwareTaskID)(nil).IsZero() = false, want true")
-	}
-	if got := nilRef.String(); got != "" {
-		t.Errorf("(*VmwareTaskID)(nil).String() = %q, want empty", got)
-	}
-
-	empty := &VmwareTaskID{}
-	if !empty.IsZero() {
-		t.Error("&VmwareTaskID{}.IsZero() = false, want true")
-	}
-
-	set := &VmwareTaskID{ID: "vmw1"}
-	if set.IsZero() {
-		t.Error("&VmwareTaskID{ID: \"vmw1\"}.IsZero() = true, want false")
-	}
-	if got := set.String(); got != "vmw1" {
-		t.Errorf("String() = %q, want %q", got, "vmw1")
-	}
-}
-
-// The two task families share GET /tasks/{id} but answer with different bodies,
-// so each accessor must refuse the other's id instead of misdecoding it.
-func TestTaskIDSpacesAreKeptApart(t *testing.T) {
-	c := testClient(t)
 	ctx := context.Background()
 
-	if _, err := c.GetTask(ctx, "vmw198487"); err == nil {
-		t.Error("GetTask accepted a VMware task id, want an error")
-	} else if !strings.Contains(err.Error(), "GetVmwareTask") {
-		t.Errorf("GetTask error should point at GetVmwareTask, got: %v", err)
+	if _, err := client.GetVMwareDiskTypes(ctx, -1); err == nil {
+		t.Error("GetVMwareDiskTypes must reject a negative location_id")
 	}
-
-	for _, id := range []string{"l1t2", "dns42"} {
-		if _, err := c.GetVmwareTask(ctx, id); err == nil {
-			t.Errorf("GetVmwareTask(%q) accepted a base task id, want an error", id)
-		} else if !strings.Contains(err.Error(), "GetTask") {
-			t.Errorf("GetVmwareTask(%q) error should point at GetTask, got: %v", id, err)
-		}
+	if _, err := client.GetVMwareGPUModels(ctx, -1); err == nil {
+		t.Error("GetVMwareGPUModels must reject a negative location_id")
 	}
-
-	if _, err := c.WaitVmwareTaskWithTimeout(ctx, "l1t2", time.Second); err == nil {
-		t.Error("WaitVmwareTaskWithTimeout accepted a base task id, want an error")
+	if _, err := client.GetVMwareStorageProfiles(ctx, 2, -1); err == nil {
+		t.Error("GetVMwareStorageProfiles must reject a negative disk_type_id")
 	}
-	if _, err := c.GetVmwareTask(ctx, ""); err == nil {
-		t.Error("GetVmwareTask accepted an empty id, want an error")
+	if _, err := client.GetVMwareImages(ctx, -1, false); err == nil {
+		t.Error("GetVMwareImages must reject a negative location_id")
 	}
 }
 
-// A no-op mutation is reported as a nil reference; awaiting it must be a no-op
-// rather than an error or a hang.
-func TestWaitVmwareTaskRefTolerationOfNoTask(t *testing.T) {
-	c := testClient(t)
-	for _, ref := range []*VmwareTaskID{nil, {}} {
-		task, err := c.WaitVmwareTaskRef(context.Background(), ref)
-		if err != nil {
-			t.Errorf("WaitVmwareTaskRef(%v) = error %v, want nil", ref, err)
+func TestParseVMwareLocationsResponse(t *testing.T) {
+	body := []byte(`{"locations":[
+		{"id":2,"tech_title":"ds-msk","gpu_supported":true},
+		{"id":6,"tech_title":"sdn-spb","gpu_supported":false}
+	]}`)
+
+	var resp ListVMwareLocationsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(resp.Locations) != 2 {
+		t.Fatalf("got %d locations, want 2", len(resp.Locations))
+	}
+	first := resp.Locations[0]
+	if first.ID != 2 || first.TechTitle != "ds-msk" || !first.GPUSupported {
+		t.Errorf("first location: %+v", first)
+	}
+	if resp.Locations[1].GPUSupported {
+		t.Error("second location must not report GPU support")
+	}
+}
+
+func TestParseVMwareDiskTypesResponse(t *testing.T) {
+	body := []byte(`{"disk_types":[{
+		"id":3,"title":"SSD","min_gb":10,"max_gb":2048,"step_gb":10,
+		"start_value_gb":20,"is_allowed_for_system_disk":true,"is_ssd":true
+	}]}`)
+
+	var resp ListVMwareDiskTypesResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(resp.DiskTypes) != 1 {
+		t.Fatalf("got %d disk types, want 1", len(resp.DiskTypes))
+	}
+	dt := resp.DiskTypes[0]
+	if dt.ID != 3 || dt.Title != "SSD" {
+		t.Errorf("id/title: %+v", dt)
+	}
+	if dt.MinGB != 10 || dt.MaxGB != 2048 || dt.StepGB != 10 || dt.StartValueGB != 20 {
+		t.Errorf("size limits: %+v", dt)
+	}
+	if !dt.IsAllowedForSystemDisk || !dt.IsSSD {
+		t.Errorf("flags: %+v", dt)
+	}
+}
+
+func TestParseVMwareGPUModelsResponse(t *testing.T) {
+	body := []byte(`{"gpu_models":[{
+		"id":1,"tech_title":"nvidia-a100","name":"NVIDIA A100",
+		"capacity_vram_mb":40960,"gpu_card_count":8,"server_allocation_limit":4,
+		"max_server_ram_mb":524288,"is_available":true
+	}]}`)
+
+	var resp ListVMwareGPUModelsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(resp.GPUModels) != 1 {
+		t.Fatalf("got %d GPU models, want 1", len(resp.GPUModels))
+	}
+	m := resp.GPUModels[0]
+	if m.ID != 1 || m.TechTitle != "nvidia-a100" || m.Name != "NVIDIA A100" {
+		t.Errorf("identity: %+v", m)
+	}
+	if m.CapacityVramMB != 40960 || m.GPUCardCount != 8 {
+		t.Errorf("capacity: %+v", m)
+	}
+	if m.ServerAllocationLimit != 4 || m.MaxServerRamMB != 524288 || !m.IsAvailable {
+		t.Errorf("allocation limits: %+v", m)
+	}
+}
+
+func TestParseVMwareStorageProfilesResponse(t *testing.T) {
+	// free_space_gb is int64: profile capacity does not fit into int32.
+	body := []byte(`{"storage_profiles":[{
+		"id":11,"name":"SSD-Fast","disk_type_id":3,"is_default":true,
+		"free_space_gb":5000000000
+	}]}`)
+
+	var resp ListVMwareStorageProfilesResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(resp.StorageProfiles) != 1 {
+		t.Fatalf("got %d profiles, want 1", len(resp.StorageProfiles))
+	}
+	p := resp.StorageProfiles[0]
+	if p.ID != 11 || p.Name != "SSD-Fast" || p.DiskTypeID != 3 || !p.IsDefault {
+		t.Errorf("profile: %+v", p)
+	}
+	if p.FreeSpaceGB != 5000000000 {
+		t.Errorf("free_space_gb = %d, want 5000000000", p.FreeSpaceGB)
+	}
+}
+
+func TestParseVMwareImagesResponse(t *testing.T) {
+	body := []byte(`{"images":[
+		{
+			"id":42,"name":"Ubuntu 24.04","os_family":"Linux","os_type":"ubuntu64Guest",
+			"min_ram_mb":1024,"hdd_gb":20,"ssh_key_supported":true,
+			"cpu_hot_add":true,"memory_hot_add":true,"nic_hot_remove":false,
+			"is_gpu_only":false,"supported_gpu_model_ids":[1,2]
+		},
+		{"id":43,"name":"Windows Server 2022","os_family":"Windows","os_type":"windows9Server64Guest"}
+	]}`)
+
+	var resp ListVMwareImagesResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(resp.Images) != 2 {
+		t.Fatalf("got %d images, want 2", len(resp.Images))
+	}
+	img := resp.Images[0]
+	if img.ID != 42 || img.Name != "Ubuntu 24.04" || img.OSFamily != "Linux" || img.OSType != "ubuntu64Guest" {
+		t.Errorf("identity: %+v", img)
+	}
+	if img.MinRamMB != 1024 || img.HddGB != 20 {
+		t.Errorf("requirements: %+v", img)
+	}
+	if !img.SSHKeySupported || !img.CPUHotAdd || !img.MemoryHotAdd || img.NICHotRemove || img.IsGPUOnly {
+		t.Errorf("flags: %+v", img)
+	}
+	if len(img.SupportedGPUModelIDs) != 2 || img.SupportedGPUModelIDs[0] != 1 || img.SupportedGPUModelIDs[1] != 2 {
+		t.Errorf("supported_gpu_model_ids = %v", img.SupportedGPUModelIDs)
+	}
+
+	// The API serializes with NullValueHandling.Ignore, so optional fields and
+	// collections may be missing entirely — that must decode to zero values,
+	// not fail.
+	if resp.Images[1].SupportedGPUModelIDs != nil {
+		t.Errorf("absent collection must stay nil, got %v", resp.Images[1].SupportedGPUModelIDs)
+	}
+}
+
+// An empty list arrives either as an empty array or (NullValueHandling.Ignore)
+// as an object without the collection at all.
+func TestParseVMwareEmptyResponses(t *testing.T) {
+	for _, body := range []string{`{"disk_types":[]}`, `{}`} {
+		var resp ListVMwareDiskTypesResponse
+		if err := json.Unmarshal([]byte(body), &resp); err != nil {
+			t.Fatalf("unmarshal %s: %v", body, err)
 		}
-		if task != nil {
-			t.Errorf("WaitVmwareTaskRef(%v) returned a task, want nil", ref)
+		if len(resp.DiskTypes) != 0 {
+			t.Errorf("%s: got %d disk types, want 0", body, len(resp.DiskTypes))
 		}
 	}
 }
 
-// The wait floor is a minimum, not a value: a larger configured timeout wins, a
-// smaller one is ignored.
-func TestVmwareWaitFloor(t *testing.T) {
-	cases := []struct {
-		configured time.Duration
-		want       time.Duration
-	}{
-		{configured: time.Minute, want: VmwareTaskWaitDefaultTimeout},
-		{configured: VmwareTaskWaitDefaultTimeout, want: VmwareTaskWaitDefaultTimeout},
-		{configured: 2 * VmwareTaskWaitDefaultTimeout, want: 2 * VmwareTaskWaitDefaultTimeout},
+// An unknown location_id is rejected by the API with 400 / -8049 rather than
+// returning an empty list, so callers must be able to tell that case apart.
+func TestIsInvalidLocation(t *testing.T) {
+	invalid := &RequestError{
+		Status:     "400 Bad Request",
+		StatusCode: http.StatusBadRequest,
+		Codes:      []int{APICodeDCLocationDoesNotExist},
 	}
-	for _, tc := range cases {
-		cfg, err := NewConfig("k", "https://api.example.com", WithPollingTimeout(tc.configured))
-		if err != nil {
-			t.Fatalf("NewConfig: %v", err)
-		}
-		c, err := NewClient(cfg)
-		if err != nil {
-			t.Fatalf("NewClient: %v", err)
-		}
-		got := c.config.PollingTimeout
-		if got < VmwareTaskWaitDefaultTimeout {
-			got = VmwareTaskWaitDefaultTimeout
-		}
-		if got != tc.want {
-			t.Errorf("configured %v: effective VMware wait = %v, want %v", tc.configured, got, tc.want)
-		}
+	if !IsInvalidLocation(invalid) {
+		t.Error("IsInvalidLocation must match -8049")
 	}
-}
-
-func TestBuildVmwarePaths(t *testing.T) {
-	cases := []struct {
-		got, want string
-	}{
-		{buildVmwareServerPath(7), "vmware/servers/7"},
-		{buildVmwareServerPath(7, "volumes"), "vmware/servers/7/volumes"},
-		{buildVmwareServerPath(7, "volumes", "9"), "vmware/servers/7/volumes/9"},
-		{buildVmwareServerPath(7, "power", "on"), "vmware/servers/7/power/on"},
-		{buildVmwareNetworkPath(3), "vmware/networks/3"},
-		{buildVmwareNetworkPath(3, "servers"), "vmware/networks/3/servers"},
-		{buildVmwareEdgePath(3, "firewall"), "vmware/networks/3/edge/firewall"},
-		{buildVmwareEdgePath(3, "nat", "663"), "vmware/networks/3/edge/nat/663"},
+	if IsInvalidLocation(&RequestError{StatusCode: http.StatusBadRequest, Codes: []int{APICodeConflict}}) {
+		t.Error("IsInvalidLocation must not match other codes")
 	}
-	for _, tc := range cases {
-		if tc.got != tc.want {
-			t.Errorf("path = %q, want %q", tc.got, tc.want)
-		}
-	}
-}
-
-// An empty value of a declared query parameter makes the API answer HTTP 500, so
-// the SDK must omit the parameter entirely rather than send it empty.
-func TestWithQueryOmitsEmptyParams(t *testing.T) {
-	if got := withQuery("vmware/images", url.Values{}); got != "vmware/images" {
-		t.Errorf("withQuery with no params = %q, want the bare path", got)
-	}
-	if got := withQuery("vmware/images", nil); got != "vmware/images" {
-		t.Errorf("withQuery(nil) = %q, want the bare path", got)
-	}
-	params := url.Values{}
-	params.Set("location_id", "5")
-	if got := withQuery("vmware/images", params); got != "vmware/images?location_id=5" {
-		t.Errorf("withQuery = %q", got)
-	}
-}
-
-// Every method validates its ids before issuing a request, so a zero or negative
-// id is reported locally instead of hitting /vmware/servers/0.
-func TestVmwareMethodsRejectNonPositiveIDs(t *testing.T) {
-	c := testClient(t)
-	ctx := context.Background()
-
-	serverCalls := map[string]func(int) error{
-		"GetVmwareServer":         func(id int) error { _, err := c.GetVmwareServer(ctx, id); return err },
-		"DeleteVmwareServer":      func(id int) error { _, err := c.DeleteVmwareServer(ctx, id); return err },
-		"GetVmwareServerVolumes":  func(id int) error { _, err := c.GetVmwareServerVolumes(ctx, id); return err },
-		"GetVmwareServerNICs":     func(id int) error { _, err := c.GetVmwareServerNICs(ctx, id); return err },
-		"GetVmwareSnapshot":       func(id int) error { _, err := c.GetVmwareSnapshot(ctx, id); return err },
-		"GetVmwareServerFirewall": func(id int) error { _, err := c.GetVmwareServerFirewall(ctx, id); return err },
-		"PowerOnVmwareServer":     func(id int) error { _, err := c.PowerOnVmwareServer(ctx, id); return err },
-		"RestoreVmwareSnapshot":   func(id int) error { _, err := c.RestoreVmwareSnapshot(ctx, id); return err },
-		"WaitVmwareServerGone":    func(id int) error { return c.WaitVmwareServerGone(ctx, id) },
-	}
-	networkCalls := map[string]func(int) error{
-		"GetVmwareNetwork":       func(id int) error { _, err := c.GetVmwareNetwork(ctx, id); return err },
-		"DeleteVmwareNetwork":    func(id int) error { _, err := c.DeleteVmwareNetwork(ctx, id); return err },
-		"GetVmwareEdgeFirewall":  func(id int) error { _, err := c.GetVmwareEdgeFirewall(ctx, id); return err },
-		"GetVmwareEdgeNAT":       func(id int) error { _, err := c.GetVmwareEdgeNAT(ctx, id); return err },
-		"GetVmwareEdgeVPN":       func(id int) error { _, err := c.GetVmwareEdgeVPN(ctx, id); return err },
-		"WaitVmwareNetworkGone":  func(id int) error { return c.WaitVmwareNetworkGone(ctx, id) },
-		"WaitVmwareNetworkState": func(id int) error { _, err := c.WaitVmwareNetworkState(ctx, id, "active"); return err },
-	}
-	for _, group := range []map[string]func(int) error{serverCalls, networkCalls} {
-		for name, call := range group {
-			for _, id := range []int{0, -1} {
-				if err := call(id); err == nil {
-					t.Errorf("%s(%d) returned no error, want a local validation failure", name, id)
-				}
-			}
-		}
-	}
-
-	// Sub-resource ids are validated too, not just the parent.
-	if _, err := c.GetVmwareVolume(ctx, 1, 0); err == nil {
-		t.Error("GetVmwareVolume with volumeID 0 returned no error")
-	}
-	if _, err := c.DeleteVmwareNIC(ctx, 1, 0); err == nil {
-		t.Error("DeleteVmwareNIC with nicID 0 returned no error")
-	}
-	if _, err := c.DeleteVmwareEdgeNATRule(ctx, 1, 0); err == nil {
-		t.Error("DeleteVmwareEdgeNATRule with ruleID 0 returned no error")
-	}
-	if _, err := c.DeleteVmwareEdgeVPNTunnel(ctx, 1, 0); err == nil {
-		t.Error("DeleteVmwareEdgeVPNTunnel with tunnelID 0 returned no error")
-	}
-
-	// An optional location filter is validated only when it is set.
-	zero := 0
-	if _, err := c.GetVmwareServerList(ctx, &zero); err == nil {
-		t.Error("GetVmwareServerList(&0) returned no error")
-	}
-	if _, err := c.GetVmwareImageList(ctx, &zero, nil); err == nil {
-		t.Error("GetVmwareImageList(&0) returned no error")
-	}
-}
-
-// A nil request must be reported rather than marshalled into a null body.
-func TestVmwareMutatorsRejectNilRequests(t *testing.T) {
-	c := testClient(t)
-	ctx := context.Background()
-
-	if _, err := c.CreateVmwareServer(ctx, nil); err == nil {
-		t.Error("CreateVmwareServer(nil) returned no error")
-	}
-	if err := c.VerifyVmwareServer(ctx, nil); err == nil {
-		t.Error("VerifyVmwareServer(nil) returned no error")
-	}
-	if _, err := c.CreateVmwareIsolatedNetwork(ctx, nil); err == nil {
-		t.Error("CreateVmwareIsolatedNetwork(nil) returned no error")
-	}
-	if _, err := c.EditVmwareNetwork(ctx, 1, nil); err == nil {
-		t.Error("EditVmwareNetwork(nil) returned no error")
-	}
-	if _, err := c.UpdateVmwareServerFirewall(ctx, 1, nil); err == nil {
-		t.Error("UpdateVmwareServerFirewall(nil) returned no error")
-	}
-	if _, err := c.UpsertVmwareEdgeNATRule(ctx, 1, nil); err == nil {
-		t.Error("UpsertVmwareEdgeNATRule(nil) returned no error")
-	}
-}
-
-func TestVmwareErrorHelpers(t *testing.T) {
-	cases := []struct {
-		name  string
-		code  int
-		check func(error) bool
-	}{
-		{"IsVmwareLocationNotFound", APICodeVmwareLocationNotFound, IsVmwareLocationNotFound},
-		{"IsVmwareNoFreePublicNetwork", APICodeVmwareNoFreePublicNetwork, IsVmwareNoFreePublicNetwork},
-		{"IsNetworkInUse", APICodeNetworkInUse, IsNetworkInUse},
-		{"IsConflict", APICodeConflict, IsConflict},
-	}
-	for _, tc := range cases {
-		match := &RequestError{StatusCode: 400, Codes: []int{tc.code}}
-		if !tc.check(match) {
-			t.Errorf("%s did not recognize code %d", tc.name, tc.code)
-		}
-		other := &RequestError{StatusCode: 400, Codes: []int{-1}}
-		if tc.check(other) {
-			t.Errorf("%s matched an unrelated code", tc.name)
-		}
-		if tc.check(nil) {
-			t.Errorf("%s(nil) = true, want false", tc.name)
-		}
-	}
-
-	// "Location not found" arrives as HTTP 400, so IsNotFound must not claim it.
-	locationGone := &RequestError{StatusCode: 400, Codes: []int{APICodeVmwareLocationNotFound}}
-	if IsNotFound(locationGone) {
-		t.Error("IsNotFound matched a 400 location-not-found; it should stay 404-only")
+	if IsInvalidLocation(nil) {
+		t.Error("IsInvalidLocation(nil) must be false")
 	}
 }

@@ -109,6 +109,7 @@ The client exposes methods for the following resources:
 - **Affinity groups**
 - **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall), networks (isolated/routed/public), edge (firewall/NAT/VPN) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
 - **Project metadata** — locations, images, applications, tasks
+- **VMware catalog** (read-only) — locations, disk types, GPU models, storage profiles, images
 
 Most mutating operations that trigger a background task provide an `...AndWait` variant
 (for example `CreateServerAndWait`) that polls the task until it finishes:
@@ -117,44 +118,24 @@ Most mutating operations that trigger a background task provide an `...AndWait` 
 server, err := client.CreateServerAndWait(ctx, &entities.CreateServerRequest{ /* ... */ })
 ```
 
-The **VMware Cloud** section offers the same variant for every mutator that starts a task —
-creates, edits, deletes, power actions, volumes, snapshots, NICs, firewalls, NAT and VPN:
+### VMware catalog
+
+`GetVMwareLocations`, `GetVMwareDiskTypes`, `GetVMwareGPUModels`,
+`GetVMwareStorageProfiles` and `GetVMwareImages` read the lookups of the VMware
+section (`/api/v1/vmware`). They are separate from the vStack lookups
+(`GetLocations`, `GetImages`), which describe a different platform and use string
+identifiers.
+
+The optional `location_id` / `disk_type_id` filters take `0` for "no filter";
+an unknown (but positive) id is rejected by the API with a 400 that
+`sdk.IsInvalidLocation` recognises:
 
 ```go
-server, err := client.CreateVmwareServerAndWait(ctx, &entities.VmwareCreateServerRequest{ /* ... */ })
-fw, err := client.UpdateVmwareEdgeFirewallAndWait(ctx, networkID, &entities.VmwareUpdateEdgeFirewallRequest{ /* ... */ })
-err = client.DeleteVmwareServerAndWait(ctx, serverID)
+diskTypes, err := client.GetVMwareDiskTypes(ctx, locationID)
+if sdk.IsInvalidLocation(err) {
+	log.Fatalf("unknown VMware location %d", locationID)
+}
 ```
-
-Three things are worth knowing before driving VMware resources from a control loop such as
-a Terraform provider:
-
-- **Task IDs are typed and separate.** VMware mutators return `*sdk.VmwareTaskID`, base ones
-  return `*sdk.TaskID`, so the two families cannot be mixed up. Where only the bare string
-  travels, `GetTask` and `GetVmwareTask` reject a foreign ID outright instead of misdecoding
-  its body — they share the `GET /tasks/{id}` endpoint but answer with different payloads.
-- **VMware operations run long.** `WaitVmwareTask` applies its own floor,
-  `sdk.VmwareTaskWaitDefaultTimeout` (30 min), rather than the 2 min base `PollingTimeout`.
-  The floor is a minimum: a larger `WithPollingTimeout` raises the wait, a smaller one does
-  not lower it — use `WaitVmwareTaskWithTimeout` to wait for less. Rebuild has been measured
-  at up to ~26 min, which fits the floor with little headroom, so give it a larger timeout.
-- **A create has happened even if the wait fails.** `CreateVmwareServerAndWait`,
-  `CopyVmwareServerAndWait` and `RebuildVmwareServerAndWait` name the new server in their
-  error, because it exists as soon as the request returns. When losing track of a server
-  would matter, use the two-step form (`RebuildVmwareServer` + `WaitVmwareTaskWithTimeout`),
-  which hands the id back directly.
-- **A completed task is not a settled resource.** After a rebuild the task reports completed
-  while the replaced server is still `deleting`. Use `WaitVmwareServerState`,
-  `WaitVmwareServerGone`, `WaitVmwareNetworkState` or `WaitVmwareNetworkGone` when the
-  resource itself has to be ready; `DeleteVmwareServerAndWait` and
-  `DeleteVmwareNetworkAndWait` already do.
-
-Some mutations are answered synchronously, with no task at all — editing an isolated network,
-for one. Those methods return `(nil, nil)`: a nil `*sdk.VmwareTaskID` means "done, nothing to
-await", not an error. `VmwareTaskID.IsZero` is nil-safe.
-
-VMware edge bandwidth is not a separate setting — it is the network's `bandwidth_mbps`, set
-with `EditVmwareNetwork` and read from `VmwareNetwork.BandwidthMbps`.
 
 ## Error handling
 
@@ -179,10 +160,10 @@ cp .env.example .env        # then fill in API_KEY and API_URL
 make example RESOURCE=meta  # read-only, safe to run first
 ```
 
-Available `RESOURCE` values: `meta`, `vmware_meta`, `server`, `network`, `ssh`, `affinity`,
-`dns`, `gateway`, `volume`, `snapshot`, `server_nic`, `race`, `vmware_server`, `vmware_network`.
+Available `RESOURCE` values: `meta`, `vmware`, `server`, `network`, `ssh`, `affinity`,
+`dns`, `gateway`, `volume`, `snapshot`, `server_nic`, `race`.
 
-> **Note:** examples other than `meta` and `vmware_meta` create and delete real (billable) resources.
+> **Note:** examples other than `meta` and `vmware` create and delete real (billable) resources.
 > Use a dedicated test project.
 
 `vmware_meta`, `vmware_server` and `vmware_network` between them call every exported `Vmware*`

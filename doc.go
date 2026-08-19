@@ -2,53 +2,9 @@
 //
 // It provides a typed client for managing cloud resources — servers, networks,
 // server NICs, volumes, snapshots, SSH keys, DNS zones, gateways, affinity
-// groups, VMware Cloud (servers, networks, edge and metadata) and project
-// metadata — exposed by the vStack Cloud Panel (for example
-// https://api.example.com).
-//
-// # VMware Cloud
-//
-// The VMware section (types and methods prefixed with Vmware) differs from
-// the rest of the SDK in two ways the API dictates. First, its objects are keyed
-// by numeric int IDs, whereas the rest of the SDK uses string IDs. Second, its
-// background tasks live in their own ID space ("vmw{N}") and are awaited with
-// WaitVmwareTask, not with the base task helpers.
-//
-// Task references are typed: VMware mutators return *VmwareTaskID while base ones
-// return *TaskID, so the two families cannot be mixed up by accident. Where only
-// the bare string travels, GetTask and GetVmwareTask reject a foreign ID outright
-// instead of misdecoding its body — the two share the GET /tasks/{id} endpoint but
-// answer with structurally different payloads.
-//
-// Four things about VMware tasks are worth knowing before writing a control loop
-// (a Terraform provider, say):
-//
-//   - They run long. WaitVmwareTask applies its own floor,
-//     VmwareTaskWaitDefaultTimeout, instead of the 2m base PollingTimeout. The
-//     floor is a minimum, not a value: a larger WithPollingTimeout raises the
-//     wait, a smaller one does not lower it. To wait for less, call
-//     WaitVmwareTaskWithTimeout. Rebuild has been measured at up to ~26m, which
-//     fits the floor with little headroom, so give it a larger timeout.
-//
-//   - A mutator that creates something has already created it by the time it
-//     returns, even if the wait then fails. The create/copy/rebuild ...AndWait
-//     methods name the new server in their error for that reason; the two-step
-//     form (CreateVmwareServer and friends) hands the id back directly and is the
-//     safer choice when losing track of a server would matter.
-//
-//   - A completed task does not mean a settled resource. After a rebuild the task
-//     reports completed while the replaced server is still "deleting". Use
-//     WaitVmwareServerState, WaitVmwareServerGone, WaitVmwareNetworkState or
-//     WaitVmwareNetworkGone when the resource itself has to be ready.
-//
-//   - Some mutations are answered synchronously, with no task at all — editing an
-//     isolated network, for one. Those methods return (nil, nil): a nil
-//     *VmwareTaskID means "done, nothing to await", not an error.
-//     VmwareTaskID.IsZero is nil-safe.
-//
-// The API also serializes changes per object: a second mutation on the same server
-// or network while the first is still running is rejected with APICodeConflict
-// (-4000), which the client retries automatically. See IsConflict.
+// groups, project metadata and the read-only VMware catalog (locations, disk
+// types, GPU models, storage profiles, images) — exposed by the vStack Cloud
+// Panel (for example https://api.example.com).
 //
 // # Getting started
 //
