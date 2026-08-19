@@ -107,13 +107,34 @@ The client exposes methods for the following resources:
 - **DNS** zones and records
 - **Gateways**
 - **Affinity groups**
+- **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall), networks (isolated/routed/public), edge (firewall/NAT/VPN) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
 - **Project metadata** — locations, images, applications, tasks
+- **VMware catalog** (read-only) — locations, disk types, GPU models, storage profiles, images
 
-Mutating operations that trigger a background task provide an `...AndWait` variant
+Most mutating operations that trigger a background task provide an `...AndWait` variant
 (for example `CreateServerAndWait`) that polls the task until it finishes:
 
 ```go
 server, err := client.CreateServerAndWait(ctx, &entities.CreateServerRequest{ /* ... */ })
+```
+
+### VMware catalog
+
+`GetVMwareLocations`, `GetVMwareDiskTypes`, `GetVMwareGPUModels`,
+`GetVMwareStorageProfiles` and `GetVMwareImages` read the lookups of the VMware
+section (`/api/v1/vmware`). They are separate from the vStack lookups
+(`GetLocations`, `GetImages`), which describe a different platform and use string
+identifiers.
+
+The optional `location_id` / `disk_type_id` filters take `0` for "no filter";
+an unknown (but positive) id is rejected by the API with a 400 that
+`sdk.IsInvalidLocation` recognises:
+
+```go
+diskTypes, err := client.GetVMwareDiskTypes(ctx, locationID)
+if sdk.IsInvalidLocation(err) {
+	log.Fatalf("unknown VMware location %d", locationID)
+}
 ```
 
 ## Error handling
@@ -139,14 +160,30 @@ cp .env.example .env        # then fill in API_KEY and API_URL
 make example RESOURCE=meta  # read-only, safe to run first
 ```
 
-Available `RESOURCE` values: `meta`, `server`, `network`, `ssh`, `affinity`,
+Available `RESOURCE` values: `meta`, `vmware`, `server`, `network`, `ssh`, `affinity`,
 `dns`, `gateway`, `volume`, `snapshot`, `server_nic`, `race`.
 
-> **Note:** examples other than `meta` create and delete real (billable) resources.
+> **Note:** examples other than `meta` and `vmware` create and delete real (billable) resources.
 > Use a dedicated test project.
+
+`vmware_meta`, `vmware_server` and `vmware_network` between them call every exported `Vmware*`
+method, each in both forms (raw call plus explicit wait, and `...AndWait`). Each provisions what
+it needs, removes it afterwards, and prints an ok/failed/skipped tally. They accept:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VMWARE_LOCATION` | `minsk` | location `tech_title` to work in (matched case-insensitively) |
+| `VMWARE_IMAGE_ID` | first Linux image | image for the servers being created |
+| `VMWARE_NETWORK_CIDR` | `192.168.94.0` | `/24` base address; the examples bump the third octet |
+| `VMWARE_KEEP` | unset | `1` leaves the created resources in place |
+| `VMWARE_SKIP_LONG` | unset | `1` skips the copy and rebuild steps (~55 min of `vmware_server`) |
+
+`vmware_server` takes roughly 100 minutes end to end because rebuild alone runs ~20 minutes and
+both of its forms are exercised; `VMWARE_SKIP_LONG=1` brings it down to about 40.
 
 ## Documentation
 - Go package docs: <https://pkg.go.dev/github.com/itglobalcom/vstack-cloud-panel-sdk>
+- Release notes: [CHANGELOG.md](CHANGELOG.md)
 
 ## Contributing
 

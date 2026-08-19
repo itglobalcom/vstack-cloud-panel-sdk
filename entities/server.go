@@ -69,6 +69,7 @@ type RenameServerRequest struct {
 	Name string `json:"name"`
 }
 
+// CreateServerTagRequest represents a single tag in a server create request.
 type CreateServerTagRequest struct {
 	Tag string `json:"value"`
 }

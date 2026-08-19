@@ -30,8 +30,24 @@ type taskResponseWrap struct {
 	Task *entities.TaskResponse `json:"task,omitempty"`
 }
 
-// GetTask retrieves a specific task by ID
+// GetTask retrieves a specific task by ID.
+//
+// TaskID must be a base task ID (for example "l{N}t{N}", "dns{N}",
+// "k8s_{f|m}{N}"). A VMware task ID (of the form "vmw{N}") is rejected before the
+// request is sent — use GetVmwareTask for those. Both kinds share the "tasks/{id}"
+// endpoint but answer with different bodies: a VMware task carrying a
+// server_id/network_id has numeric fields where entities.TaskResponse expects
+// strings, so decoding one here used to fail with an unmarshal error that looked
+// like a broken API, and one without those fields decoded but left IsCompleted
+// empty, hanging the wait on an already-finished task.
 func (c *CloudClient) GetTask(ctx context.Context, taskID string) (*entities.TaskResponse, error) {
+	// Reject a VMware task id up front. Without this the request succeeds and
+	// the failure surfaces either as an unmarshal error (when the task carries a
+	// numeric server_id/network_id) or as a silently empty IsCompleted, which then
+	// hangs waitTaskCompletion on an already-finished task.
+	if IsVmwareTaskID(taskID) {
+		return nil, fmt.Errorf("task ID %q is a VMware task ID; use GetVmwareTask instead", taskID)
+	}
 	path := fmt.Sprintf("%s/%s", tasksBaseURL, taskID)
 
 	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
@@ -209,7 +225,11 @@ func (c *CloudClient) WaitServerActiveWithTimeout(ctx context.Context, serverID 
 	}
 }
 
-// WaitServerTaskCompletion waits for task completion and then for server to become Active
+// WaitServerTaskCompletion waits for task completion and then for server to become Active.
+//
+// TaskID must be a base task ID. It is polled through GetTask, which rejects a
+// VMware task ID ("vmw{N}"); wait for VMware tasks with WaitVmwareTask instead. Note
+// also that serverID is a base string server ID — VMware servers are keyed by int.
 func (c *CloudClient) WaitServerTaskCompletion(ctx context.Context, serverID string, taskID string) (*entities.Server, error) {
 	// First wait for task to complete
 	if _, err := c.waitTaskCompletion(ctx, taskID); err != nil {

@@ -2,8 +2,9 @@
 //
 // It provides a typed client for managing cloud resources — servers, networks,
 // server NICs, volumes, snapshots, SSH keys, DNS zones, gateways, affinity
-// groups and project metadata — exposed by the vStack Cloud Panel
-// (for example https://api.example.com).
+// groups, project metadata and the read-only VMware catalog (locations, disk
+// types, GPU models, storage profiles, images) — exposed by the vStack Cloud
+// Panel (for example https://api.example.com).
 //
 // # Getting started
 //
@@ -42,6 +43,17 @@
 // Many mutating calls have an "AndWait" variant (for example CreateServerAndWait)
 // that polls the associated task until it completes, so callers need not
 // implement polling themselves.
+//
+// The VMware section provides the same variant for every mutator that starts
+// a task — creates, edits, deletes, power actions, volumes, snapshots, NICs,
+// firewalls, NAT and VPN. Each returns the resulting entity where the API makes it
+// identifiable, and a plain error otherwise. The delete variants
+// (DeleteVmwareServerAndWait, DeleteVmwareNetworkAndWait) additionally wait for the
+// object to actually disappear, because the task alone completes too early.
+//
+// The non-waiting form of each method is still available and returns a
+// *VmwareTaskID; await it with WaitVmwareTaskRef, or with WaitVmwareTask /
+// WaitVmwareTaskWithTimeout for a bare ID.
 //
 // # Retries and concurrency
 //
