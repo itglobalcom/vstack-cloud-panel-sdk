@@ -17,6 +17,7 @@ type Network struct {
 	Tags          []string `json:"tags"`
 }
 
+// CreateNetworkRequest represents a request to create an isolated network.
 type CreateNetworkRequest struct {
 	Name          string `json:"name"`
 	LocationID    string `json:"location_id"`
@@ -25,11 +26,13 @@ type CreateNetworkRequest struct {
 	Mask          int    `json:"mask,omitempty"`
 }
 
+// UpdateNetworkRequest represents a request to rename an existing network.
 type UpdateNetworkRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 }
 
+// Validate checks the create network request.
 func (r *CreateNetworkRequest) Validate() error {
 	if r.Name == "" {
 		return fmt.Errorf("name is required")
@@ -40,6 +43,7 @@ func (r *CreateNetworkRequest) Validate() error {
 	return nil
 }
 
+// Validate checks the update network request.
 func (r *UpdateNetworkRequest) Validate() error {
 	if r.Name == "" {
 		return fmt.Errorf("name must be provided")

@@ -23,12 +23,22 @@ type Config struct {
 	BaseURL         string
 	Timeout         time.Duration
 	PollingInterval time.Duration
-	PollingTimeout  time.Duration // Maximum polling wait time
-	UserAgent       string
-	HTTPClient      *http.Client
-	Logger          Logger
-	LogLevel        LogLevel
-	Context         context.Context
+	// PollingTimeout is the maximum time an "...AndWait" / Wait* call spends polling
+	// a single task before giving up.
+	//
+	// VMware operations run far longer than this 2m default — server create
+	// and copy take ~4 min, rebuild up to ~26 min — so VMware task waiting does NOT
+	// use this value as-is: WaitVmwareTask raises it to VmwareTaskWaitDefaultTimeout
+	// when it is smaller. Setting PollingTimeout above that floor still wins, which is
+	// worth doing for rebuild; setting it below has no effect on VMware waits (use
+	// WaitVmwareTaskWithTimeout to wait for less). Base resources use this value
+	// directly.
+	PollingTimeout time.Duration
+	UserAgent      string
+	HTTPClient     *http.Client
+	Logger         Logger
+	LogLevel       LogLevel
+	Context        context.Context
 
 	// Retry settings
 	MaxRetries      int
@@ -55,7 +65,11 @@ func WithPollingInterval(interval time.Duration) Option {
 	}
 }
 
-// WithPollingTimeout sets a maximum time for polling operations
+// WithPollingTimeout sets a maximum time for polling operations.
+//
+// For VMware tasks this raises the wait but cannot lower it: WaitVmwareTask never
+// waits less than VmwareTaskWaitDefaultTimeout. Raising it above that floor is worth
+// doing for rebuild, whose duration varies widely. See Config.PollingTimeout.
 func WithPollingTimeout(timeout time.Duration) Option {
 	return func(c *Config) {
 		c.PollingTimeout = timeout
@@ -134,6 +148,9 @@ func NewConfig(apiKey, baseURL string, opts ...Option) (*Config, error) {
 		BaseURL:         baseURL,
 		Timeout:         DefaultTimeout,
 		PollingInterval: DefaultPollingInterval,
+		// Deliberately kept at 2m: it is a cross-cutting default, and base resources
+		// settle well inside it. VMware tasks run far longer, so they do not use this
+		// value as-is — WaitVmwareTask raises it to VmwareTaskWaitDefaultTimeout.
 		PollingTimeout:  2 * time.Minute,
 		UserAgent:       DefaultUserAgent,
 		Logger:          NewNopLogger(),

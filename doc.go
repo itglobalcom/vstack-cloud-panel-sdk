@@ -44,6 +44,17 @@
 // that polls the associated task until it completes, so callers need not
 // implement polling themselves.
 //
+// The VMware section provides the same variant for every mutator that starts
+// a task — creates, edits, deletes, power actions, volumes, snapshots, NICs,
+// firewalls, NAT and VPN. Each returns the resulting entity where the API makes it
+// identifiable, and a plain error otherwise. The delete variants
+// (DeleteVmwareServerAndWait, DeleteVmwareNetworkAndWait) additionally wait for the
+// object to actually disappear, because the task alone completes too early.
+//
+// The non-waiting form of each method is still available and returns a
+// *VmwareTaskID; await it with WaitVmwareTaskRef, or with WaitVmwareTask /
+// WaitVmwareTaskWithTimeout for a bare ID.
+//
 // # Retries and concurrency
 //
 // The client automatically retries transient failures (configurable HTTP

@@ -80,17 +80,24 @@ func TestUnquoteTXT(t *testing.T) {
 }
 
 func TestParseAPIError(t *testing.T) {
-	codes, msg := parseAPIError([]byte(`{"errors":[{"code":-4000,"message":"conflict"}]}`))
-	if len(codes) != 1 || codes[0] != APICodeConflict || msg != "conflict" {
-		t.Errorf("real format: codes=%v msg=%q", codes, msg)
+	codes, params, msg := parseAPIError([]byte(`{"errors":[{"code":-4000,"message":"conflict"}]}`))
+	if len(codes) != 1 || codes[0] != APICodeConflict || msg != "conflict" || len(params) != 0 {
+		t.Errorf("real format: codes=%v params=%v msg=%q", codes, params, msg)
 	}
 
-	codes, msg = parseAPIError([]byte(`{"message":"legacy"}`))
-	if codes != nil || msg != "legacy" {
-		t.Errorf("legacy format: codes=%v msg=%q", codes, msg)
+	// Error_params must be parsed and flattened.
+	codes, params, msg = parseAPIError([]byte(`{"errors":[{"code":-12030,"message":"not found","error_params":[{"name":"server_ids","value":"999999"}]}]}`))
+	if len(codes) != 1 || codes[0] != -12030 || msg != "not found" ||
+		len(params) != 1 || params[0].Name != "server_ids" || params[0].Value != "999999" {
+		t.Errorf("error_params: codes=%v params=%v msg=%q", codes, params, msg)
 	}
 
-	if _, msg := parseAPIError([]byte(`not-json`)); msg != "not-json" {
+	codes, params, msg = parseAPIError([]byte(`{"message":"legacy"}`))
+	if codes != nil || msg != "legacy" || params != nil {
+		t.Errorf("legacy format: codes=%v params=%v msg=%q", codes, params, msg)
+	}
+
+	if _, _, msg := parseAPIError([]byte(`not-json`)); msg != "not-json" {
 		t.Errorf("raw fallback: %q", msg)
 	}
 }
