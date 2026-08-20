@@ -26,6 +26,14 @@ const (
 	// the VMware endpoints answer 400 with this code for an unknown
 	// location_id instead of silently returning an empty list.
 	APICodeDCLocationDoesNotExist = -8049
+	// APICodeVmwareNoFreePublicNetwork — "There is no free network at the moment":
+	// CreateVmwarePublicNetwork asked for a valid capacity, but the location has no
+	// free public address block left. This is an infrastructure condition rather
+	// than a bad request, and worth telling apart from the neighbouring -12042.
+	APICodeVmwareNoFreePublicNetwork = -12043
+	// APICodeVmwareInvalidPublicNetworkCapacity — "The capacity of public network
+	// is invalid": the requested size is not one the location offers.
+	APICodeVmwareInvalidPublicNetworkCapacity = -12042
 )
 
 // ErrorParam is a single name/value pair from an API error's error_params block.
@@ -101,10 +109,10 @@ func IsTaskFailed(err error) bool {
 // IsNotFound reports whether err means the requested object does not exist:
 // either an HTTP 404 from the API or a semantic not-found (see ErrNotFound).
 //
-// This intentionally does NOT cover the VMware "Location not found" error
-// (APICodeVmwareLocationNotFound, -8049), which the backend returns as HTTP 400.
+// This intentionally does NOT cover the "location does not exist" error
+// (APICodeDCLocationDoesNotExist, -8049), which the backend returns as HTTP 400.
 // Recognizing a 400 as not-found here would be a leaky hack that misclassifies
-// other 400s, so that case has its own helper — IsVmwareLocationNotFound.
+// other 400s, so that case has its own helper — IsInvalidLocation.
 func IsNotFound(err error) bool {
 	if errors.Is(err, ErrNotFound) {
 		return true
@@ -128,10 +136,26 @@ func IsConflict(err error) bool {
 	return HasAPICode(err, APICodeConflict)
 }
 
+// IsNetworkInUse reports whether err is the API "servers are connected to the
+// network" error (-19511) — a network cannot be deleted while servers or gateways
+// are still attached to it.
+func IsNetworkInUse(err error) bool {
+	return HasAPICode(err, APICodeNetworkInUse)
+}
+
 // IsInvalidLocation reports whether err is the API "location does not exist"
 // error (-8049) — the 400 returned for an unknown location_id filter.
 func IsInvalidLocation(err error) bool {
 	return HasAPICode(err, APICodeDCLocationDoesNotExist)
+}
+
+// IsVmwareNoFreePublicNetwork reports whether err is the VMware "there is no free
+// network at the moment" error (-12043) — the requested public network capacity is
+// valid, but the location has no free address block left. Distinct from
+// APICodeVmwareInvalidPublicNetworkCapacity (-12042), which means the size itself
+// is not offered.
+func IsVmwareNoFreePublicNetwork(err error) bool {
+	return HasAPICode(err, APICodeVmwareNoFreePublicNetwork)
 }
 
 // HasAPICode reports whether err carries the given API error code.
