@@ -259,3 +259,49 @@ func TestIsInvalidLocation(t *testing.T) {
 		t.Error("IsInvalidLocation(nil) must be false")
 	}
 }
+
+// A network that still has servers or gateways attached cannot be deleted: the
+// API answers -19511, and the caller has to tell that apart from other refusals
+// to be able to name what to detach.
+func TestIsNetworkInUse(t *testing.T) {
+	inUse := &RequestError{
+		Status:     "400 Bad Request",
+		StatusCode: http.StatusBadRequest,
+		Codes:      []int{APICodeNetworkInUse},
+	}
+	if !IsNetworkInUse(inUse) {
+		t.Error("IsNetworkInUse must match -19511")
+	}
+	if IsNetworkInUse(&RequestError{StatusCode: http.StatusBadRequest, Codes: []int{APICodeConflict}}) {
+		t.Error("IsNetworkInUse must not match other codes")
+	}
+	if IsNetworkInUse(nil) {
+		t.Error("IsNetworkInUse(nil) must be false")
+	}
+}
+
+// -12043 ("no free network at the moment") and -12042 ("the capacity is invalid")
+// arrive the same way but mean opposite things: the first says the request was
+// fine and the location is exhausted, the second that the size is not offered.
+// The predicate must not blur them.
+func TestIsVmwareNoFreePublicNetwork(t *testing.T) {
+	exhausted := &RequestError{
+		Status:     "400 Bad Request",
+		StatusCode: http.StatusBadRequest,
+		Codes:      []int{APICodeVmwareNoFreePublicNetwork},
+	}
+	if !IsVmwareNoFreePublicNetwork(exhausted) {
+		t.Error("IsVmwareNoFreePublicNetwork must match -12043")
+	}
+	badCapacity := &RequestError{
+		Status:     "400 Bad Request",
+		StatusCode: http.StatusBadRequest,
+		Codes:      []int{APICodeVmwareInvalidPublicNetworkCapacity},
+	}
+	if IsVmwareNoFreePublicNetwork(badCapacity) {
+		t.Error("IsVmwareNoFreePublicNetwork must not match -12042 (invalid capacity)")
+	}
+	if IsVmwareNoFreePublicNetwork(nil) {
+		t.Error("IsVmwareNoFreePublicNetwork(nil) must be false")
+	}
+}

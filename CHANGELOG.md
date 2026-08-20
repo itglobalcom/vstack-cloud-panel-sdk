@@ -49,8 +49,8 @@ compiling.
 - `RequestError.ErrorParams`, the parsed `error_params` block the API attaches to an
   error to point at the field or list element that failed. This is the only way to tell
   which element of a batch operation was rejected.
-- Error helpers and codes: `IsVmwareLocationNotFound`, `IsVmwareNoFreePublicNetwork`,
-  `IsNetworkInUse`, `APICodeVmwareLocationNotFound`, `APICodeVmwareNoFreePublicNetwork`,
+- Error helpers and codes: `IsInvalidLocation`, `IsVmwareNoFreePublicNetwork`,
+  `IsNetworkInUse`, `APICodeDCLocationDoesNotExist`, `APICodeVmwareNoFreePublicNetwork`,
   `APICodeVmwareInvalidPublicNetworkCapacity`.
 - Constants for the VMware enums: server and network states, network types, server and
   edge firewall actions and traffic directions, NAT rule types, VPN encryption types and

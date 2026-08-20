@@ -92,11 +92,11 @@ func runVmwareMetainfoExample(ctx context.Context, client *sdk.CloudClient) {
 	step("images that cannot use a GPU: %d", len(nonGPUImages))
 
 	// An unknown location is reported as HTTP 400 with code -8049, not as a 404,
-	// so IsNotFound does not see it — IsVmwareLocationNotFound does.
+	// so IsNotFound does not see it — IsInvalidLocation does.
 	section("GetVmwareImageList — unknown location (error handling)")
 	if _, err := client.GetVmwareImageList(ctx, intPtr(999999), nil); err != nil {
 		step("error: %v", err)
-		step("IsNotFound=%v IsVmwareLocationNotFound=%v", sdk.IsNotFound(err), sdk.IsVmwareLocationNotFound(err))
+		step("IsNotFound=%v IsInvalidLocation=%v", sdk.IsNotFound(err), sdk.IsInvalidLocation(err))
 	} else {
 		step("unexpected success for location 999999")
 	}
