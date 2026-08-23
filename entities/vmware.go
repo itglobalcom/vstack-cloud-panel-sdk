@@ -15,6 +15,11 @@ type VMwareLocation struct {
 	// GPUSupported reports whether at least one GPU model available to the
 	// partner can be allocated in this location.
 	GPUSupported bool `json:"gpu_supported"`
+	// NestedHypervisorSupported reports whether the location has a VDC available
+	// to the caller that supports nested virtualization. It is derived from the
+	// VDCs the caller may provision in, so two projects can see different values
+	// for the same location.
+	NestedHypervisorSupported bool `json:"nested_hypervisor_supported"`
 }
 
 // VMwareDiskType represents a disk type allowed by the partner/location tariff.
