@@ -33,8 +33,8 @@ func runVmwareMetainfoExample(ctx context.Context, client *sdk.CloudClient) {
 	}
 	step("locations: %d", len(locations))
 	for _, loc := range locations {
-		step("#%d %s — GPU supported: %v, disk types: %d",
-			loc.ID, loc.TechTitle, loc.GPUSupported, len(loc.DiskTypes))
+		step("#%d %s — GPU supported: %v, nested hypervisor supported: %v, disk types: %d",
+			loc.ID, loc.TechTitle, loc.GPUSupported, loc.NestedHypervisorSupported, len(loc.DiskTypes))
 		// Disk types are published per location, not as a standalone
 		// catalog. Title is the value the create/verify requests take, and the
 		// limits are in MB to match system_disk_size_mb / size_mb.
