@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Nested virtualization on a VMware Cloud server.** `nested_hypervisor` on
+  `VmwareServer` (list and get) and on `VmwareCreateServerRequest` (the type
+  `VerifyVmwareServer` takes as well), plus `EnableVmwareServerNestedHypervisor` and
+  `DisableVmwareServerNestedHypervisor` with their `...AndWait` variants. The switch
+  is applied by a backend saga that power-cycles a running server; a server that is
+  already off stays off. Switching to the state the server is already in is answered
+  with no task at all: the raw methods return `(nil, nil)` and the `...AndWait` forms
+  return the current server without waiting for anything.
+- `NestedHypervisorSupported` on both location models — `VmwareLocation`
+  (`GetVmwareLocationList`) and `VMwareLocation` (`GetVMwareLocations`). The capability
+  belongs to a VDC, so the catalog reports it per location as "some VDC available to
+  this project supports it", and two projects can see different values for the same
+  location.
+- Error codes and helpers for the refusals ordering and switching can hit:
+  `APICodeVmwareOperationNotSupportedForGpuServer` (-8149 — nested virtualization and a
+  GPU allocation are mutually exclusive), `APICodeVmwareServerIsSuspended` (-8154) and
+  `APICodeVmwareNestedHypervisorNotSupportedInLocation` (-8155), with the matching
+  `IsVmwareOperationNotSupportedForGpuServer`, `IsVmwareServerSuspended` and
+  `IsVmwareNestedHypervisorNotSupportedInLocation`.
+
+About the section below: it is headed `[1.2.0] - Unreleased`, but the surface it
+describes shipped in `v1.1.2` and `v1.1.3`. The stale heading is a known
+inconsistency of this file, tracked separately and left untouched here.
+
 ## [1.2.0] - Unreleased
 
 Adds support for the **VMware Cloud** service. This is new surface only — no
