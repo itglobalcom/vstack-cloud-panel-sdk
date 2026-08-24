@@ -30,18 +30,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [1.1.3] - 2026-08-20
 
-### Changed
+### Fixed
 
-- The VMware Cloud error surface, one day after it shipped: the "location not found"
-  helper and code became `IsInvalidLocation` / `APICodeDCLocationDoesNotExist`, and
-  `IsNetworkInUse`, `IsVmwareNoFreePublicNetwork` and the public-network capacity
-  codes were added. The `[1.1.2]` entry below lists the surface as it stands now.
+- **`v1.1.2` does not build; this release is the fix.** Four error declarations were
+  lost in a merge before `v1.1.2` was tagged while their callers stayed: on that tag
+  `go build ./...` fails with `undefined: sdk.IsVmwareLocationNotFound`,
+  `undefined: sdk.IsNetworkInUse` and `undefined: sdk.IsVmwareNoFreePublicNetwork`
+  in `examples/`. Restored here as `IsNetworkInUse`, `IsVmwareNoFreePublicNetwork`,
+  `APICodeVmwareNoFreePublicNetwork` (-12043) and
+  `APICodeVmwareInvalidPublicNetworkCapacity` (-12042); the dangling
+  `IsVmwareLocationNotFound` reference was pointed at the helper that does exist,
+  `IsInvalidLocation`. Pin `v1.1.3` or later — `v1.1.2` is unusable.
 
 ## [1.1.2] - 2026-08-19
 
 Adds support for the **VMware Cloud** service. This is new surface only — no
-previously published type or method was removed or renamed, so existing code keeps
-compiling.
+previously published type or method was removed or renamed.
+
+> **Do not pin this tag.** `go build ./...` fails on it; use `v1.1.3`. The version
+> number is also irregular for the content: a whole new service arrived in a patch
+> bump from `1.1.0`, and `1.1.1` was never released. Both are recorded rather than
+> rewritten — the tag is published.
 
 ### Added
 
@@ -82,9 +91,10 @@ compiling.
 - `RequestError.ErrorParams`, the parsed `error_params` block the API attaches to an
   error to point at the field or list element that failed. This is the only way to tell
   which element of a batch operation was rejected.
-- Error helpers and codes: `IsInvalidLocation`, `IsVmwareNoFreePublicNetwork`,
-  `IsNetworkInUse`, `APICodeDCLocationDoesNotExist`, `APICodeVmwareNoFreePublicNetwork`,
-  `APICodeVmwareInvalidPublicNetworkCapacity`.
+- Error helpers and codes: `IsInvalidLocation` and `APICodeDCLocationDoesNotExist`.
+  (`IsNetworkInUse`, `IsVmwareNoFreePublicNetwork` and the two public-network capacity
+  codes are documented under `[1.1.3]`: they are absent from this tag's tree, which is
+  what breaks its build.)
 - Constants for the VMware enums: server and network states, network types, server and
   edge firewall actions and traffic directions, NAT rule types, VPN encryption types and
   Diffie-Hellman groups, image GPU filter values.
@@ -139,11 +149,22 @@ such as a Terraform provider has to account for:
 
 ## [1.1.0] - 2026-08-14
 
+### Added
+
+- `WaitGatewayActive`, `WaitGatewayActiveWithTimeout` and `WaitGatewayTaskCompletion`:
+  a gateway stays busy for a while after its task has completed, so the task alone is
+  not a safe point to start the next change from.
+- `ErrTaskFailed` and `IsTaskFailed` — a backend task that finished in a failed state,
+  told apart from a transport error.
+
 ### Changed
 
 - A failed rule-set task is retried once, and the rule-set payload is validated
-  before the request goes out. Documented after the fact: this changelog was
-  introduced later, and the release carried no entry.
+  before the request goes out.
+- Every gateway `...AndWait` method now waits for the gateway to become active, not
+  just for its task to complete. Documented after the fact: this changelog was
+  introduced later, and the release carried no entry — the entry was reconstructed
+  from `v1.0.1..v1.1.0` (`a5c4f9a`).
 
 ## [1.0.1]
 
