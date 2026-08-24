@@ -6,11 +6,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-This is the section that describes the next tag. The one headed
-`[1.2.0] - Unreleased` below is a stale heading, not a second pending release: the
-surface it lists shipped in `v1.1.2` and `v1.1.3`. That inconsistency of this file is
-tracked separately and left untouched here.
-
 ### Added
 
 - **Nested hypervisor on a VMware Cloud server.** `nested_hypervisor` on
@@ -33,7 +28,16 @@ tracked separately and left untouched here.
   `IsVmwareOperationNotSupportedForGpuServer`, `IsVmwareServerSuspended` and
   `IsVmwareNestedHypervisorNotSupportedInLocation`.
 
-## [1.2.0] - Unreleased
+## [1.1.3] - 2026-08-20
+
+### Changed
+
+- The VMware Cloud error surface, one day after it shipped: the "location not found"
+  helper and code became `IsInvalidLocation` / `APICodeDCLocationDoesNotExist`, and
+  `IsNetworkInUse`, `IsVmwareNoFreePublicNetwork` and the public-network capacity
+  codes were added. The `[1.1.2]` entry below lists the surface as it stands now.
+
+## [1.1.2] - 2026-08-19
 
 Adds support for the **VMware Cloud** service. This is new surface only — no
 previously published type or method was removed or renamed, so existing code keeps
@@ -132,6 +136,14 @@ such as a Terraform provider has to account for:
 - **The API serializes changes per object.** A second mutation on the same server or
   network while the first is still running is rejected with `APICodeConflict` (-4000),
   which the client retries automatically.
+
+## [1.1.0] - 2026-08-14
+
+### Changed
+
+- A failed rule-set task is retried once, and the rule-set payload is validated
+  before the request goes out. Documented after the fact: this changelog was
+  introduced later, and the release carried no entry.
 
 ## [1.0.1]
 

@@ -57,7 +57,10 @@ Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сей
 
 ## Тесты
 
-- Только stdlib `testing`. Нет testify, httptest, моков, golden-файлов — так и оставить.
+- Только stdlib `testing`. Нет testify, моков, golden-файлов — так и оставить.
+- Сетевой сценарий проверяется на стабе `net/http/httptest` через готовый хелпер
+  `newTestClient(t, handler)` (`gateway_internal_test.go`): он направляет клиент на стаб
+  и обнуляет ожидания ретраев. Свой `httptest.NewServer` в доменных тестах не поднимать.
 - Файл `<домен>_internal_test.go`, `package sdk` (тестируются и приватные функции).
 - Паттерны: map-driven `cases := map[string]string{…}` для чистых функций; `t.Run` для
   сценариев; разбор контракта — unmarshal реального JSON-литерала в `ListXResponse`
@@ -65,6 +68,15 @@ Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сей
 - Формат сообщений: `t.Errorf("f(%q) = %q, want %q", …)`.
 - Обязательное покрытие change-slice: билдер пути, валидация аргументов, разбор ответа
   (включая ответ без коллекции — API опускает пустые поля), новый предикат ошибки.
+
+## CHANGELOG
+
+`CHANGELOG.md` — часть каждого change-slice, а не работа релиза: запись идёт
+в `## [Unreleased]` (Keep a Changelog: `Added`/`Changed`/`Fixed`) и описывает
+поведение контракта для потребителя SDK, а не список файлов. Заголовок версии
+проставляется при выпуске тега, `[Unreleased]` остаётся пустым до следующего слайса.
+Незакрытый заголовок `[Unreleased]` со старой версией — расхождение с тегами,
+а не вторая ожидающая версия.
 
 ## Гейты
 
