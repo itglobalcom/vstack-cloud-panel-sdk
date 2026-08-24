@@ -6,9 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+This is the section that describes the next tag. The one headed
+`[1.2.0] - Unreleased` below is a stale heading, not a second pending release: the
+surface it lists shipped in `v1.1.2` and `v1.1.3`. That inconsistency of this file is
+tracked separately and left untouched here.
+
 ### Added
 
-- **Nested virtualization on a VMware Cloud server.** `nested_hypervisor` on
+- **Nested hypervisor on a VMware Cloud server.** `nested_hypervisor` on
   `VmwareServer` (list and get) and on `VmwareCreateServerRequest` (the type
   `VerifyVmwareServer` takes as well), plus `EnableVmwareServerNestedHypervisor` and
   `DisableVmwareServerNestedHypervisor` with their `...AndWait` variants. The switch
@@ -22,15 +27,11 @@ All notable changes to this project are documented here. The format follows
   this project supports it", and two projects can see different values for the same
   location.
 - Error codes and helpers for the refusals ordering and switching can hit:
-  `APICodeVmwareOperationNotSupportedForGpuServer` (-8149 — nested virtualization and a
+  `APICodeVmwareOperationNotSupportedForGpuServer` (-8149 — nested hypervisor and a
   GPU allocation are mutually exclusive), `APICodeVmwareServerIsSuspended` (-8154) and
   `APICodeVmwareNestedHypervisorNotSupportedInLocation` (-8155), with the matching
   `IsVmwareOperationNotSupportedForGpuServer`, `IsVmwareServerSuspended` and
   `IsVmwareNestedHypervisorNotSupportedInLocation`.
-
-About the section below: it is headed `[1.2.0] - Unreleased`, but the surface it
-describes shipped in `v1.1.2` and `v1.1.3`. The stale heading is a known
-inconsistency of this file, tracked separately and left untouched here.
 
 ## [1.2.0] - Unreleased
 

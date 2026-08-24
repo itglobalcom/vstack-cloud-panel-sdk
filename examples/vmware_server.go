@@ -544,53 +544,51 @@ func runVmwareServerExample(ctx context.Context, client *sdk.CloudClient) {
 		run.check("WaitVmwareTaskRef(computer name)", err, "hostname changed")
 	}
 
-	// ---------- Nested virtualization ----------
+	// ---------- Nested hypervisor ----------
 	//
 	// The switch power-cycles a running server; the server is off at this point, so
-	// it stays off. Both forms are exercised on each direction, and the raw call
-	// deliberately repeats the state the ...AndWait form has just reached: that is
-	// the idempotent outcome, answered with no task at all.
+	// it stays off. Both forms are exercised on each direction, the raw one first:
+	// it runs from the state the server is not in yet, so it really starts a task
+	// and the explicit wait has something to await. The ...AndWait form then repeats
+	// the state just reached — the idempotent outcome, answered with no task at all,
+	// which it reports by returning the current server without waiting.
 	section("Nested hypervisor")
 	if !env.Location.NestedHypervisorSupported {
 		step("location %s reports nested_hypervisor_supported=false — the switch is expected to be refused",
 			env.Location.TechTitle)
 	}
-	nested, err := client.EnableVmwareServerNestedHypervisorAndWait(ctx, serverID)
-	if run.check("EnableVmwareServerNestedHypervisorAndWait", err, "nested_hypervisor=%v power=%v",
-		nestedHypervisorOf(nested), powerOf(nested)) {
-		if t, err := client.EnableVmwareServerNestedHypervisor(ctx, serverID); run.check(
-			"EnableVmwareServerNestedHypervisor", err, "task=%q (empty = already enabled)", t.String()) {
-			if t == nil {
-				step("idempotent repeat: no task started, nothing to await")
-			} else {
-				_, err = client.WaitVmwareTaskRef(ctx, t)
-				run.check("WaitVmwareTaskRef(nested hypervisor enable)", err, "nested virtualization enabled")
-			}
+	if t, err := client.EnableVmwareServerNestedHypervisor(ctx, serverID); run.check(
+		"EnableVmwareServerNestedHypervisor", err, "task=%s", t.String()) {
+		_, err = client.WaitVmwareTaskRef(ctx, t)
+		run.check("WaitVmwareTaskRef(nested hypervisor enable)", err, "nested hypervisor enabled")
+
+		nested, err := client.EnableVmwareServerNestedHypervisorAndWait(ctx, serverID)
+		if run.check("EnableVmwareServerNestedHypervisorAndWait", err, "nested_hypervisor=%v power=%v",
+			nestedHypervisorOf(nested), powerOf(nested)) {
+			step("idempotent repeat: already enabled, so no task was started and nothing was awaited")
 		}
 	} else {
 		// The refusals worth telling apart: a GPU server, a suspended server and a
-		// location whose VDCs do not offer nested virtualization at all.
+		// location whose VDCs do not offer nested hypervisor at all.
 		switch {
 		case sdk.IsVmwareOperationNotSupportedForGpuServer(err):
 			step("refused because the server has a GPU allocation — the two are mutually exclusive")
 		case sdk.IsVmwareServerSuspended(err):
 			step("refused because the server is suspended — resume it and retry")
 		case sdk.IsVmwareNestedHypervisorNotSupportedInLocation(err):
-			step("refused because no VDC available here supports nested virtualization")
+			step("refused because no VDC available here supports nested hypervisor")
 		}
 	}
 
-	nested, err = client.DisableVmwareServerNestedHypervisorAndWait(ctx, serverID)
-	if run.check("DisableVmwareServerNestedHypervisorAndWait", err, "nested_hypervisor=%v power=%v",
-		nestedHypervisorOf(nested), powerOf(nested)) {
-		if t, err := client.DisableVmwareServerNestedHypervisor(ctx, serverID); run.check(
-			"DisableVmwareServerNestedHypervisor", err, "task=%q (empty = already disabled)", t.String()) {
-			if t == nil {
-				step("idempotent repeat: no task started, nothing to await")
-			} else {
-				_, err = client.WaitVmwareTaskRef(ctx, t)
-				run.check("WaitVmwareTaskRef(nested hypervisor disable)", err, "nested virtualization disabled")
-			}
+	if t, err := client.DisableVmwareServerNestedHypervisor(ctx, serverID); run.check(
+		"DisableVmwareServerNestedHypervisor", err, "task=%s", t.String()) {
+		_, err = client.WaitVmwareTaskRef(ctx, t)
+		run.check("WaitVmwareTaskRef(nested hypervisor disable)", err, "nested hypervisor disabled")
+
+		nested, err := client.DisableVmwareServerNestedHypervisorAndWait(ctx, serverID)
+		if run.check("DisableVmwareServerNestedHypervisorAndWait", err, "nested_hypervisor=%v power=%v",
+			nestedHypervisorOf(nested), powerOf(nested)) {
+			step("idempotent repeat: already disabled, so no task was started and nothing was awaited")
 		}
 	}
 

@@ -108,7 +108,7 @@ The client exposes methods for the following resources:
 - **Gateways**
 - **Affinity groups**
 - **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall,
-  nested virtualization), networks (isolated/routed/public), edge (firewall/NAT/VPN) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
+  nested hypervisor), networks (isolated/routed/public), edge (firewall/NAT/VPN) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
 - **Project metadata** — locations, images, applications, tasks
 - **VMware catalog** (read-only) — locations, disk types, GPU models, storage profiles, images
 
