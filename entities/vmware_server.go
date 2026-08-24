@@ -46,9 +46,8 @@ type VmwareServer struct {
 	// absent from list responses.
 	VmToolsInstalled *bool      `json:"vm_tools_installed,omitempty"`
 	GPU              *VmwareGPU `json:"gpu,omitempty"`
-	// NestedHypervisor reports whether nested virtualization (running a
-	// hypervisor inside the guest) is enabled on the server. It is mutually
-	// exclusive with a GPU allocation and is switched with
+	// NestedHypervisor reports whether nested virtualization is enabled on the
+	// server. Mutually exclusive with a GPU allocation; switched with
 	// EnableVmwareServerNestedHypervisor / DisableVmwareServerNestedHypervisor.
 	NestedHypervisor bool        `json:"nested_hypervisor"`
 	NICs             []VmwareNIC `json:"nics"`
@@ -99,11 +98,9 @@ type VmwareCreateServerRequest struct {
 	SSHKeys              []int             `json:"ssh_keys,omitempty"`
 	NeedSysprep          *bool             `json:"need_sysprep,omitempty"`
 	GPU                  *VmwareGPURequest `json:"gpu,omitempty"`
-	// NestedHypervisor orders the server with nested virtualization enabled. It
-	// cannot be combined with GPU (the backend rejects the order with
-	// APICodeVmwareOperationNotSupportedForGpuServer) and requires the location
-	// to offer a VDC that supports it — see VmwareLocation.NestedHypervisorSupported
-	// and APICodeVmwareNestedHypervisorNotSupportedInLocation. Omitted means "off".
+	// NestedHypervisor orders the server with nested virtualization enabled;
+	// omitted means "off". It cannot be combined with GPU and requires a location
+	// that reports NestedHypervisorSupported.
 	NestedHypervisor *bool `json:"nested_hypervisor,omitempty"`
 }
 

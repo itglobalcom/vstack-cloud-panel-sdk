@@ -489,9 +489,6 @@ func (c *CloudClient) ResetVmwareServerAndWait(ctx context.Context, serverID int
 // vmwareNestedHypervisor switches nested virtualization on a server and returns
 // the background task, or (nil, nil) when the server is already in the requested
 // state.
-//
-// The action has no request body, so the server id is validated here rather than
-// through a request Validate (the power actions do the same).
 func (c *CloudClient) vmwareNestedHypervisor(ctx context.Context, serverID int, action string) (*VmwareTaskID, error) {
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
@@ -504,10 +501,8 @@ func (c *CloudClient) vmwareNestedHypervisor(ctx context.Context, serverID int, 
 	if err := c.doJSON(req, &task); err != nil {
 		return nil, fmt.Errorf("failed to %s nested hypervisor on vmware server %d: %w", action, serverID, err)
 	}
-	// The API answers 200 with "task_id": null when the server is already in the
-	// requested state: there is nothing to do, hence no task. Report that as
-	// (nil, nil), the same way EditVmwareNetwork reports its synchronous case, so
-	// callers do not await a meaningless empty task.
+	// 200 with "task_id": null means the server is already in the requested
+	// state; report (nil, nil) so callers do not await an empty task.
 	if task.ID == "" {
 		return nil, nil
 	}
@@ -521,8 +516,7 @@ func (c *CloudClient) vmwareNestedHypervisorAndWait(ctx context.Context, serverI
 	if err != nil {
 		return nil, err
 	}
-	// A nil task is the idempotent case — awaitVmwareTask treats it as "nothing to
-	// await", so the current server state is returned without any waiting.
+	// A nil task (idempotent outcome) is "nothing to await" for awaitVmwareTask.
 	if err := c.awaitVmwareTask(ctx, task); err != nil {
 		return nil, err
 	}
@@ -533,15 +527,10 @@ func (c *CloudClient) vmwareNestedHypervisorAndWait(ctx context.Context, serverI
 // and returns the background task to await, or (nil, nil) when it is already
 // enabled.
 //
-// The switch is applied by a backend saga that power-cycles a running server: it
-// powers the guest off, changes the setting and powers it back on. A server that
-// is already off stays off.
-//
-// It is rejected for a server with a GPU allocation
-// (APICodeVmwareOperationNotSupportedForGpuServer), for a suspended server
-// (APICodeVmwareServerIsSuspended) and when the VDC the server lives in does not
-// support nested virtualization — see VmwareLocation.NestedHypervisorSupported for
-// what the catalog reports up front.
+// The backend saga power-cycles a running server; a server that is off stays
+// off. Rejected for a GPU server, a suspended server and a location without the
+// capability — see IsVmwareOperationNotSupportedForGpuServer,
+// IsVmwareServerSuspended and IsVmwareNestedHypervisorNotSupportedInLocation.
 func (c *CloudClient) EnableVmwareServerNestedHypervisor(ctx context.Context, serverID int) (*VmwareTaskID, error) {
 	return c.vmwareNestedHypervisor(ctx, serverID, "enable")
 }

@@ -35,21 +35,15 @@ const (
 	// is invalid": the requested size is not one the location offers.
 	APICodeVmwareInvalidPublicNetworkCapacity = -12042
 	// APICodeVmwareOperationNotSupportedForGpuServer — "This operation is not
-	// supported for GPU VMs": the operation is refused because the server has a GPU
-	// allocation. Nested virtualization is mutually exclusive with GPU, so both
-	// ordering a server with gpu and nested_hypervisor together and enabling nested
-	// virtualization on an existing GPU server are answered with this code.
+	// supported for GPU VMs": nested virtualization is mutually exclusive with a
+	// GPU allocation, at order time and when enabling it on an existing server.
 	APICodeVmwareOperationNotSupportedForGpuServer = -8149
 	// APICodeVmwareServerIsSuspended — "The operation is not available for a
-	// suspended VM": the server is in state suspended
-	// (entities.VmwareServerStateSuspended) and must be resumed first. Unlike the
-	// GPU and location refusals this one cannot be predicted from the catalog.
+	// suspended VM": the server is suspended and must be resumed first.
 	APICodeVmwareServerIsSuspended = -8154
 	// APICodeVmwareNestedHypervisorNotSupportedInLocation — "The location has no
-	// available VDC that supports nested hypervisor": the order asked for
-	// nested_hypervisor in a location where no VDC available to the caller supports
-	// it. VmwareLocation.NestedHypervisorSupported reports the same capability up
-	// front, so this code means the catalog was not consulted or has since changed.
+	// available VDC that supports nested hypervisor": the capability is reported
+	// up front by VmwareLocation.NestedHypervisorSupported.
 	APICodeVmwareNestedHypervisorNotSupportedInLocation = -8155
 )
 
@@ -176,10 +170,8 @@ func IsVmwareNoFreePublicNetwork(err error) bool {
 }
 
 // IsVmwareOperationNotSupportedForGpuServer reports whether err is the VMware
-// "this operation is not supported for GPU VMs" error (-8149) — the server has a
-// GPU allocation, which rules the operation out. Nested virtualization is the
-// case that hits it: it cannot be combined with a GPU, neither at order time nor
-// by enabling it later.
+// "this operation is not supported for GPU VMs" error (-8149) — nested
+// virtualization cannot be combined with a GPU allocation.
 func IsVmwareOperationNotSupportedForGpuServer(err error) bool {
 	return HasAPICode(err, APICodeVmwareOperationNotSupportedForGpuServer)
 }
@@ -193,9 +185,8 @@ func IsVmwareServerSuspended(err error) bool {
 
 // IsVmwareNestedHypervisorNotSupportedInLocation reports whether err is the
 // VMware "the location has no available VDC that supports nested hypervisor"
-// error (-8155) — the order asked for nested_hypervisor where no VDC available to
-// the caller offers it. Check VmwareLocation.NestedHypervisorSupported before
-// ordering to avoid it.
+// error (-8155); VmwareLocation.NestedHypervisorSupported reports the capability
+// up front.
 func IsVmwareNestedHypervisorNotSupportedInLocation(err error) bool {
 	return HasAPICode(err, APICodeVmwareNestedHypervisorNotSupportedInLocation)
 }

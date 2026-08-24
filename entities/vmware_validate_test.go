@@ -72,8 +72,7 @@ func TestVmwareCreateServerRequestValidate(t *testing.T) {
 		t.Errorf("complete GPU triple rejected: %v", err)
 	}
 
-	// nested_hypervisor is a plain flag with no local precondition: both values
-	// must pass.
+	// nested_hypervisor has no local precondition: both values must pass.
 	for _, want := range []bool{true, false} {
 		r := base()
 		r.NestedHypervisor = boolPtr(want)
@@ -82,11 +81,8 @@ func TestVmwareCreateServerRequestValidate(t *testing.T) {
 		}
 	}
 
-	// GPU + nested_hypervisor is refused by the backend, not here (spec decision 3):
-	// the exclusion is a domain rule and arrives as
-	// APICodeVmwareOperationNotSupportedForGpuServer. Validate must not pre-empt
-	// it — a local guess would also have to know the GPU state of an existing
-	// server, which the order request does not carry.
+	// GPU + nested_hypervisor is a domain rule enforced by the backend
+	// (APICodeVmwareOperationNotSupportedForGpuServer); Validate must not pre-empt it.
 	both := base()
 	both.GPU = &VmwareGPURequest{GPUModelID: 1, VramMB: intPtr(4096), CardCount: intPtr(1)}
 	both.NestedHypervisor = boolPtr(true)
@@ -363,12 +359,9 @@ func TestVmwareTaskTerminalStates(t *testing.T) {
 	}
 }
 
-// The JSON names of the nested-virtualization fields are fixed by the contract
-// (spec "Имена, зафиксированные спекой"): the server state and the order field
-// are nested_hypervisor, the location capability is
-// nested_hypervisor_supported in BOTH location models. A rename on either side
-// silently turns the value into a zero value for every consumer, so the names
-// are asserted against literal contract JSON rather than through the Go fields.
+// The JSON names are fixed by the contract: nested_hypervisor on the server and
+// the order, nested_hypervisor_supported in both location models. They are
+// asserted against literal contract JSON so a rename cannot pass silently.
 func TestVmwareNestedHypervisorContractNames(t *testing.T) {
 	// Server state: present in both list and get responses, so it is a plain
 	// bool rather than a live-only pointer.
@@ -379,8 +372,7 @@ func TestVmwareNestedHypervisorContractNames(t *testing.T) {
 	if !enabled.NestedHypervisor {
 		t.Errorf("nested_hypervisor:true must decode into VmwareServer.NestedHypervisor, got %+v", enabled)
 	}
-	// The API serializes with NullValueHandling.Ignore, so an absent field must
-	// read as "off" instead of failing.
+	// An absent field must read as "off": the API omits null fields.
 	var absent VmwareServer
 	if err := json.Unmarshal([]byte(`{"id":42,"state":"active"}`), &absent); err != nil {
 		t.Fatalf("unmarshal server without the field: %v", err)
@@ -394,8 +386,8 @@ func TestVmwareNestedHypervisorContractNames(t *testing.T) {
 		t.Errorf("VmwareServer must serialize the field as nested_hypervisor, got %s", body)
 	}
 
-	// Order field: a pointer, so "omitted" (means off) stays distinguishable
-	// from an explicit false.
+	// Order field: a pointer, so "omitted" stays distinguishable from an
+	// explicit false.
 	order := VmwareCreateServerRequest{
 		LocationID: 5, Name: "srv", ImageID: 1010,
 		CPUCount: 1, RamMB: 1024, SystemDiskSizeMB: 10240,

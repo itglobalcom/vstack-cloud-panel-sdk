@@ -546,12 +546,10 @@ func runVmwareServerExample(ctx context.Context, client *sdk.CloudClient) {
 
 	// ---------- Nested hypervisor ----------
 	//
-	// The switch power-cycles a running server; the server is off at this point, so
-	// it stays off. Both forms are exercised on each direction, the raw one first:
-	// it runs from the state the server is not in yet, so it really starts a task
-	// and the explicit wait has something to await. The ...AndWait form then repeats
-	// the state just reached — the idempotent outcome, answered with no task at all,
-	// which it reports by returning the current server without waiting.
+	// The switch power-cycles a running server; the server is off here, so it
+	// stays off. The raw form runs first and really starts a task; the AndWait
+	// form then repeats the reached state — the idempotent outcome, answered
+	// without a task, so nothing is awaited.
 	section("Nested hypervisor")
 	if !env.Location.NestedHypervisorSupported {
 		step("location %s reports nested_hypervisor_supported=false — the switch is expected to be refused",
@@ -568,8 +566,6 @@ func runVmwareServerExample(ctx context.Context, client *sdk.CloudClient) {
 			step("idempotent repeat: already enabled, so no task was started and nothing was awaited")
 		}
 	} else {
-		// The refusals worth telling apart: a GPU server, a suspended server and a
-		// location whose VDCs do not offer nested hypervisor at all.
 		switch {
 		case sdk.IsVmwareOperationNotSupportedForGpuServer(err):
 			step("refused because the server has a GPU allocation — the two are mutually exclusive")

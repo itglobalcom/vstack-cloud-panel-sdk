@@ -311,10 +311,9 @@ func TestIsVmwareNoFreePublicNetwork(t *testing.T) {
 	}
 }
 
-// The two switch routes are fixed by the contract:
-// POST vmware/servers/{id}/nested-hypervisor/{enable|disable}. The id is also
-// validated before any request is built — the action has no body, so there is no
-// request Validate to do it.
+// The switch routes are fixed by the contract:
+// POST vmware/servers/{id}/nested-hypervisor/{enable|disable}; the server id is
+// validated before any request is built.
 func TestVmwareServerNestedHypervisorPaths(t *testing.T) {
 	type call struct {
 		method string
@@ -368,12 +367,9 @@ func TestVmwareServerNestedHypervisorPaths(t *testing.T) {
 	}
 }
 
-// The three refusals of the nested-virtualization switch are distinct business
-// outcomes and the caller has to be able to name them: -8149 is "the server has
-// a GPU" (nothing to retry, the exclusion is permanent), -8154 is "resume the
-// server first" (retryable by the user), -8155 is "this location has no VDC with
-// the capability" (predictable from VmwareLocation.NestedHypervisorSupported).
-// A predicate that blurs them would leave the provider with one opaque error.
+// The three refusals of the switch are distinct business outcomes: -8149 the
+// server has a GPU, -8154 resume the server first, -8155 the location lacks the
+// capability. Each predicate must match only its own code.
 func TestVmwareNestedHypervisorErrorPredicates(t *testing.T) {
 	// The codes themselves are fixed by the contract, not by the SDK.
 	fixed := map[string]struct {
@@ -420,8 +416,8 @@ func TestVmwareNestedHypervisorErrorPredicates(t *testing.T) {
 		}
 	}
 
-	// End to end: the switch wraps its error with %w, so the predicate has to
-	// keep working on what the method actually returns.
+	// End to end: the methods wrap errors with %w, so the predicates must keep
+	// working on what a method actually returns.
 	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -439,10 +435,8 @@ func TestVmwareNestedHypervisorErrorPredicates(t *testing.T) {
 	}
 }
 
-// The switch is asynchronous and its task belongs to the VMware family: it is
-// polled through GET /tasks/{id} with the state in "is_completed", not through
-// the base task channel. ...AndWait must wait for the task and then report the
-// server as it is after the switch.
+// ...AndWait polls the task through the VMware channel (GET /tasks/{id}, state
+// in "is_completed") and then reports the refreshed server.
 func TestEnableVmwareServerNestedHypervisorAndWait(t *testing.T) {
 	var taskPolls, serverReads int32
 
@@ -479,10 +473,9 @@ func TestEnableVmwareServerNestedHypervisorAndWait(t *testing.T) {
 	}
 }
 
-// The idempotent outcome (spec clarification 12): switching to the state the
-// server is already in answers HTTP 200 with "task_id": null. There is no task,
-// so the raw method reports no task at all and ...AndWait must return the
-// current server state instead of awaiting an empty task id.
+// The idempotent outcome: switching to the state the server is already in
+// answers HTTP 200 with "task_id": null — the raw method reports no task and
+// ...AndWait returns the current server without waiting.
 func TestVmwareServerNestedHypervisorAndWaitIdempotent(t *testing.T) {
 	var serverReads int32
 
@@ -505,8 +498,7 @@ func TestVmwareServerNestedHypervisorAndWaitIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DisableVmwareServerNestedHypervisor: %v", err)
 	}
-	// A non-nil reference to an empty id would be handed to the task waiter by
-	// callers that keep the raw task.
+	// A non-nil task with an empty id would be handed to the task waiter.
 	if task != nil {
 		t.Errorf("an answer without a task must report no task, got %+v", task)
 	}
