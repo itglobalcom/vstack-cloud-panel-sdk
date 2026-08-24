@@ -59,7 +59,7 @@ Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сей
 
 - Только stdlib `testing`. Нет testify, моков, golden-файлов — так и оставить.
 - Сетевой сценарий проверяется на стабе `net/http/httptest` через готовый хелпер
-  `newTestClient(t, handler)` (`gateway_internal_test.go:16`): он направляет клиент на стаб,
+  `newTestClient(t, handler)` (`gateway_internal_test.go:17`): он направляет клиент на стаб,
   выключает ретраи (`WithMaxRetries(0)`) и сжимает ожидания опроса до
   `WithPollingInterval(5ms)` + `WithPollingTimeout(2s)` — именно это делает тесты
   `...AndWait`-методов быстрыми и детерминированными. Свой `httptest.NewServer`
