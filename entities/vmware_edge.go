@@ -333,13 +333,15 @@ func validateVmwareVPNSharedKey(key string) error {
 
 // ===================== Edge bandwidth =====================
 //
-// VmwareEdgeBandwidthRequest and UpdateVmwareEdgeBandwidth were removed.
-// PUT /vmware/networks/{id}/edge/bandwidth answered 200 and ran its task to
-// completion while persisting nothing: it reshaped the traffic in vCloud but
-// never wrote the value, so the API kept reporting the old bandwidth and the next
-// edit of the network silently reverted the real setting. It also skipped the
-// bandwidth policy check and the NSX-T code path, and there was no way to read the
-// value back (GET answered 405).
+// PUT /vmware/networks/{id}/edge/bandwidth is the one operation in the SDK's
+// scope that is deliberately not implemented, because it does not work.
+//
+// Measured against live production on 2026-09-04: a request for 30 Mbit/s on a
+// routed network drove its task to state Completed, and the network went on
+// reporting bandwidth_mbps 20. The endpoint reports success and silently
+// persists nothing — the worst case for a caller that treats a completed task as
+// confirmation. It also skips the bandwidth policy check and the NSX-T code path,
+// and the value cannot be read back through it (GET answers 405).
 //
 // Edge bandwidth and network bandwidth are the same field: set it with
 // EditVmwareNetwork (VmwareEditNetworkRequest.BandwidthMbps), which validates the

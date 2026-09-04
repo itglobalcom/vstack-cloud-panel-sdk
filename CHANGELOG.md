@@ -4,11 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0] - Unreleased
+## [Unreleased]
 
-Adds support for the **VMware Cloud** service. This is new surface only — no
-previously published type or method was removed or renamed, so existing code keeps
-compiling.
+Adds support for the **VMware Cloud** service and brings the base task model up to
+the unified model the API publishes.
+
+**This release removes published declarations** (see Removed) — the version number
+has to be chosen accordingly, which is why the heading carries none yet. Nothing
+that worked before stops working: every removed method addressed a route the
+Public API does not serve, and every changed field never decoded.
 
 ### Added
 
@@ -60,19 +64,73 @@ compiling.
   afterwards, and prints a pass/fail tally.
 - Unit tests for the VMware task-id handling, path building, input validation and all
   request `Validate()` methods.
+- **VMware Cloud nested virtualization**: `EnableVmwareServerNestedHypervisor` and
+  `DisableVmwareServerNestedHypervisor` with their `...AndWait` pairs, the
+  `NestedHypervisor` field on `VmwareServer` and `VmwareCreateServerRequest`, and
+  `VmwareLocation.NestedHypervisorSupported`, which says where the feature is offered.
+  An idempotent call creates no task and answers with an empty `*VmwareTaskID`.
+- The unified task model on `entities.TaskResponse`: `Type`, `ProgressPercent`,
+  `Completed` and `Resources` (`[]TaskResource`). `Resources` is the complete list of
+  what a task touched and the only place some resources appear at all — a DNS `ptr`
+  record and a K8s cluster have no field of their own. `ResourceID` reads one out.
+- `TaskState*` and `TaskResource*`, the single registry of task states and resource
+  types. The `VmwareTaskState*` / `VmwareTaskResource*` names are defined as these
+  constants, and `entities.VmwareTaskResource` now names `entities.TaskResource`.
+- `TaskResponse.IsTerminal`, `IsSucceeded` and `IsFailed`. `is_completed` is a
+  five-member enum, not a boolean.
+- `AlreadyCompletedTaskID` and `IsAlreadyCompletedTaskID`: the synthetic
+  `already_completed_task` id that a synchronous vStack delete returns with
+  `?return_task=true`. The wait answers it without a request.
 
 ### Changed
 
-- `GetTask` now rejects a VMware task id (`vmw{N}`) up front instead of issuing the
-  request. Previously such a call either failed with an unmarshal error that looked like
-  a broken API, or — for a task carrying no `server_id`/`network_id` — decoded into an
-  empty `IsCompleted` and hung the wait on an already-finished task. Use
-  `GetVmwareTask` for those ids. Correct callers are unaffected.
+- `GetTask` accepts a task id of **any** family, VMware (`vmw{N}`) included, and
+  `entities.TaskResponse` decodes all of them: the unified part of the model is the same
+  for every service, and the legacy per-resource fields a service does not send stay
+  empty. The reason the VMware id used to be rejected does not hold on the current
+  contract — a VMware task carries no numeric `server_id`/`network_id`, and
+  `is_completed` is always a PascalCase string. `GetVmwareTask` still returns the
+  VMware-typed model, whose `ServerID`/`NetworkID` hand back ints. This is a widening;
+  no previously working call changes behaviour.
+- **Waiting** for a VMware task through the base helpers is still refused, now by the
+  wait itself rather than as a side effect of `GetTask`: VMware tasks routinely outrun
+  the base `PollingTimeout`. Use `WaitVmwareTask`.
+- The base wait leaves its loop on **any** terminal state. `TaskState` has five members
+  and `Canceled` is terminal, so a canceled task used to be polled until the wait timed
+  out instead of being reported. The error wraps `ErrTaskFailed` and names the state.
+- `entities.TaskResponse.KubernetesClusterID` reads `k8s_cluster_id`. The tag was
+  `cluster_id`, which no task DTO publishes, so the field was never filled.
+- The per-resource `TaskResponse` id fields are marked deprecated, matching the API,
+  which marks them `[Obsolete("use resources[]")]`. They are still filled and still
+  published. `KubernetesNodeGroupID` is deprecated outright: no task of any service
+  carries a node group id, so the field never had a wire counterpart.
+- `GetVMwareImages` sends the real GPU filter, `gpu=required`. It sent
+  `gpu_only=true`, which is not a declared parameter of the endpoint and was dropped:
+  asking for GPU-only images answered with every image.
+- `GetVMwareLocations`, `GetVMwareImages` and `GetVMwareGPUModels` are **deprecated** in
+  favour of `GetVmwareLocationList`, `GetVmwareImageList` and `GetVmwareGPUModelList`.
 - `WaitVmwareTask` logs when a configured `PollingTimeout` below the VMware floor is
   raised, so the effective wait is discoverable from the log.
 - Documented previously undocumented exported declarations (`RetryReason.String`,
   `DefaultRetryPolicy`, `ValidationError`, `NewValidationError`, `CreateNetworkRequest`,
   `UpdateNetworkRequest`, `CreateServerTagRequest`).
+
+### Removed
+
+Breaking at compile time. Both methods addressed routes the Public API does not serve,
+and both fields sets never decoded, so no working behaviour is lost.
+
+- `GetVMwareDiskTypes` and `GetVMwareStorageProfiles`, with
+  `ListVMwareDiskTypesResponse`, `ListVMwareStorageProfilesResponse` and
+  `entities.VMwareStorageProfile`. `/vmware/disk-types` and `/vmware/storage-profiles`
+  exist only under the AdminV2 prefix; through the Public API both always answered 404.
+  Disk types travel inside the location (`VmwareLocation.DiskTypes`); storage profiles
+  are not published.
+- The fields of `entities.VMwareDiskType` (`ID`, `MinGB`, `MaxGB`, `StepGB`,
+  `StartValueGB`). The type now names `VmwareLocationDiskType`, which matches the
+  contract: megabytes, no id, selected by `Title`. `entities.VMwareLocation` likewise
+  names `VmwareLocation`, so it gains `DiskTypes` and `NestedHypervisorSupported`; its
+  three previous fields are unchanged.
 
 ### Notes for VMware Cloud users
 
@@ -81,8 +139,10 @@ such as a Terraform provider has to account for:
 
 - **Edge bandwidth is the network's bandwidth.** Set it with `EditVmwareNetwork` and
   read it from `VmwareNetwork.BandwidthMbps`. The SDK deliberately exposes no
-  `PUT /edge/bandwidth` wrapper: that endpoint reports success without persisting the
-  value, so the API keeps serving the old bandwidth afterwards.
+  `PUT /edge/bandwidth` wrapper, and this is the one operation in its scope that is
+  intentionally missing: the endpoint reports success without persisting anything.
+  Measured against live production — a request for 30 Mbit/s completed its task with
+  `Completed` while the network went on reporting `bandwidth_mbps: 20`.
 - **A completed task is not a settled resource.** After a rebuild the replaced server
   stays readable in state `deleting` for minutes. Use the resource-state waiters.
 - **A create has happened even if the wait fails.** `CreateVmwareServerAndWait`,
