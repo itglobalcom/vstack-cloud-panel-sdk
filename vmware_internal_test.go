@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 	"testing"
+
+	"github.com/itglobalcom/vstack-cloud-panel-sdk/entities"
 )
 
 func TestBuildVMwarePath(t *testing.T) {
@@ -18,11 +21,9 @@ func TestBuildVMwarePath(t *testing.T) {
 	if err := addIDFilter(filters, "location_id", 2); err != nil {
 		t.Fatalf("location_id filter: %v", err)
 	}
-	if err := addIDFilter(filters, "disk_type_id", 7); err != nil {
-		t.Fatalf("disk_type_id filter: %v", err)
-	}
-	want := "vmware/storage-profiles?disk_type_id=7&location_id=2"
-	if got := buildVMwarePath(vmwareStorageProfilesPath, filters); got != want {
+	filters.Set("gpu", entities.VmwareImageGPURequired)
+	want := "vmware/images?gpu=required&location_id=2"
+	if got := buildVMwarePath(vmwareImagesPath, filters); got != want {
 		t.Errorf("both filters: got %q, want %q", got, want)
 	}
 
@@ -62,24 +63,11 @@ func TestAddIDFilter(t *testing.T) {
 // A negative id must fail before the request is built — the caller must not get
 // a full unfiltered list back.
 func TestGetVMwareCatalogRejectsNegativeID(t *testing.T) {
-	config, err := NewConfig("token", "https://api.example.com")
-	if err != nil {
-		t.Fatalf("config: %v", err)
-	}
-	client, err := NewClient(config)
-	if err != nil {
-		t.Fatalf("client: %v", err)
-	}
+	client := newTestClient(t, noRequestHandler(t))
 	ctx := context.Background()
 
-	if _, err := client.GetVMwareDiskTypes(ctx, -1); err == nil {
-		t.Error("GetVMwareDiskTypes must reject a negative location_id")
-	}
 	if _, err := client.GetVMwareGPUModels(ctx, -1); err == nil {
 		t.Error("GetVMwareGPUModels must reject a negative location_id")
-	}
-	if _, err := client.GetVMwareStorageProfiles(ctx, 2, -1); err == nil {
-		t.Error("GetVMwareStorageProfiles must reject a negative disk_type_id")
 	}
 	if _, err := client.GetVMwareImages(ctx, -1, false); err == nil {
 		t.Error("GetVMwareImages must reject a negative location_id")
@@ -88,7 +76,10 @@ func TestGetVMwareCatalogRejectsNegativeID(t *testing.T) {
 
 func TestParseVMwareLocationsResponse(t *testing.T) {
 	body := []byte(`{"locations":[
-		{"id":2,"tech_title":"ds-msk","gpu_supported":true},
+		{"id":2,"tech_title":"ds-msk","gpu_supported":true,"disk_types":[
+			{"title":"SSD","is_default":true,"is_ssd":true,"is_allowed_for_system_disk":true,
+			 "min_mb":10240,"max_mb":2048000,"step_mb":10240,"default_size_mb":61440}
+		]},
 		{"id":6,"tech_title":"sdn-spb","gpu_supported":false}
 	]}`)
 
@@ -107,31 +98,19 @@ func TestParseVMwareLocationsResponse(t *testing.T) {
 	if resp.Locations[1].GPUSupported {
 		t.Error("second location must not report GPU support")
 	}
-}
 
-func TestParseVMwareDiskTypesResponse(t *testing.T) {
-	body := []byte(`{"disk_types":[{
-		"id":3,"title":"SSD","min_gb":10,"max_gb":2048,"step_gb":10,
-		"start_value_gb":20,"is_allowed_for_system_disk":true,"is_ssd":true
-	}]}`)
-
-	var resp ListVMwareDiskTypesResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	// Disk types travel inside the location: there is no disk-type catalog
+	// endpoint, so this is the only place their names and limits come from.
+	if len(first.DiskTypes) != 1 {
+		t.Fatalf("got %d disk types, want 1", len(first.DiskTypes))
 	}
-
-	if len(resp.DiskTypes) != 1 {
-		t.Fatalf("got %d disk types, want 1", len(resp.DiskTypes))
+	dt := first.DiskTypes[0]
+	if dt.Title != "SSD" || !dt.IsDefault || !dt.IsSSD || !dt.IsAllowedForSystemDisk {
+		t.Errorf("disk type identity/flags: %+v", dt)
 	}
-	dt := resp.DiskTypes[0]
-	if dt.ID != 3 || dt.Title != "SSD" {
-		t.Errorf("id/title: %+v", dt)
-	}
-	if dt.MinGB != 10 || dt.MaxGB != 2048 || dt.StepGB != 10 || dt.StartValueGB != 20 {
-		t.Errorf("size limits: %+v", dt)
-	}
-	if !dt.IsAllowedForSystemDisk || !dt.IsSSD {
-		t.Errorf("flags: %+v", dt)
+	// The limits are in megabytes, matching system_disk_size_mb / size_mb.
+	if dt.MinMB != 10240 || dt.MaxMB != 2048000 || dt.StepMB != 10240 || dt.DefaultSizeMB != 61440 {
+		t.Errorf("disk type size limits: %+v", dt)
 	}
 }
 
@@ -159,30 +138,6 @@ func TestParseVMwareGPUModelsResponse(t *testing.T) {
 	}
 	if m.ServerAllocationLimit != 4 || m.MaxServerRamMB != 524288 || !m.IsAvailable {
 		t.Errorf("allocation limits: %+v", m)
-	}
-}
-
-func TestParseVMwareStorageProfilesResponse(t *testing.T) {
-	// free_space_gb is int64: profile capacity does not fit into int32.
-	body := []byte(`{"storage_profiles":[{
-		"id":11,"name":"SSD-Fast","disk_type_id":3,"is_default":true,
-		"free_space_gb":5000000000
-	}]}`)
-
-	var resp ListVMwareStorageProfilesResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	if len(resp.StorageProfiles) != 1 {
-		t.Fatalf("got %d profiles, want 1", len(resp.StorageProfiles))
-	}
-	p := resp.StorageProfiles[0]
-	if p.ID != 11 || p.Name != "SSD-Fast" || p.DiskTypeID != 3 || !p.IsDefault {
-		t.Errorf("profile: %+v", p)
-	}
-	if p.FreeSpaceGB != 5000000000 {
-		t.Errorf("free_space_gb = %d, want 5000000000", p.FreeSpaceGB)
 	}
 }
 
@@ -230,14 +185,44 @@ func TestParseVMwareImagesResponse(t *testing.T) {
 // An empty list arrives either as an empty array or (NullValueHandling.Ignore)
 // as an object without the collection at all.
 func TestParseVMwareEmptyResponses(t *testing.T) {
-	for _, body := range []string{`{"disk_types":[]}`, `{}`} {
-		var resp ListVMwareDiskTypesResponse
+	for _, body := range []string{`{"locations":[]}`, `{}`} {
+		var resp ListVMwareLocationsResponse
 		if err := json.Unmarshal([]byte(body), &resp); err != nil {
 			t.Fatalf("unmarshal %s: %v", body, err)
 		}
-		if len(resp.DiskTypes) != 0 {
-			t.Errorf("%s: got %d disk types, want 0", body, len(resp.DiskTypes))
+		if len(resp.Locations) != 0 {
+			t.Errorf("%s: got %d locations, want 0", body, len(resp.Locations))
 		}
+	}
+}
+
+// The GPU filter of the images endpoint is "gpu", whose values are an enum. The
+// deprecated two-state parameter has to map onto it: "gpu_only", the name this
+// method used to send, is not a declared parameter and was ignored, so asking
+// for GPU-only images answered with all of them.
+func TestGetVMwareImagesGPUFilter(t *testing.T) {
+	var query atomic.Value
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query.Store(r.URL.RawQuery)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"images":[]}`))
+	}))
+	ctx := context.Background()
+
+	if _, err := client.GetVMwareImages(ctx, 2, true); err != nil {
+		t.Fatalf("gpu-only: %v", err)
+	}
+	if got, want := query.Load(), "gpu=required&location_id=2"; got != want {
+		t.Errorf("gpu-only query = %v, want %q", got, want)
+	}
+
+	// Without the filter the call stays a plain GET on the location.
+	if _, err := client.GetVMwareImages(ctx, 2, false); err != nil {
+		t.Fatalf("unfiltered: %v", err)
+	}
+	if got, want := query.Load(), "location_id=2"; got != want {
+		t.Errorf("unfiltered query = %v, want %q", got, want)
 	}
 }
 

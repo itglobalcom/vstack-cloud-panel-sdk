@@ -1,43 +1,37 @@
 package entities
 
-// VMware catalog (lookup) entities.
+// Superseded VMware catalog (lookup) entities.
 //
-// These resources are read-only: they describe what the VMware section of the
-// project can be built from — locations, disk types, GPU models, storage
-// profiles and OS images. They are exposed by the api/v1/vmware/* endpoints
-// and are distinct from the vStack lookups in metainfo.go (Location, Image),
+// These types back the GetVMware* catalog methods, which the GetVmware*List
+// methods of vmware_metainfo.go replaced. They describe the same three endpoints
+// (api/v1/vmware/locations, /images, /gpu-models) in an older, lossier shape and
+// are kept only so that published code keeps compiling — new code should use the
+// VmwareLocation, VmwareImage and VmwareGPUModel types instead.
+//
+// They are distinct from the vStack lookups in metainfo.go (Location, Image),
 // which describe a different platform and use string identifiers.
 
-// VMwareLocation represents a VMware data center location available to the project
-type VMwareLocation struct {
-	ID        int    `json:"id"`
-	TechTitle string `json:"tech_title"`
-	// GPUSupported reports whether at least one GPU model available to the
-	// partner can be allocated in this location.
-	GPUSupported bool `json:"gpu_supported"`
-}
-
-// VMwareDiskType represents a disk type allowed by the partner/location tariff.
+// VMwareLocation represents a VMware data center location available to the project.
 //
-// Note: write operations select a disk type by Title, not by ID (see the
-// create server / create volume requests); ID is informational and links a
-// disk type to its storage profiles.
-type VMwareDiskType struct {
-	ID    int    `json:"id"`
-	Title string `json:"title"`
-	// MinGB, MaxGB, StepGB and StartValueGB describe the allowed volume sizes:
-	// a size must lie in [MinGB, MaxGB] and be a multiple of StepGB;
-	// StartValueGB is the value the panel offers by default.
-	MinGB                  int  `json:"min_gb"`
-	MaxGB                  int  `json:"max_gb"`
-	StepGB                 int  `json:"step_gb"`
-	StartValueGB           int  `json:"start_value_gb"`
-	IsAllowedForSystemDisk bool `json:"is_allowed_for_system_disk"`
-	IsSSD                  bool `json:"is_ssd"`
-}
+// Deprecated: use VmwareLocation, which this now names. GetVMwareLocations is
+// superseded by GetVmwareLocationList.
+type VMwareLocation = VmwareLocation
+
+// VMwareDiskType represents a disk type offered in a location.
+//
+// Deprecated: use VmwareLocationDiskType, which this now names. There is no
+// standalone disk-type catalog: disk types travel inside VmwareLocation.DiskTypes,
+// their sizes are in megabytes, they carry no id, and the write-side selection key
+// is Title. The previous definition of this type described a gigabyte-based
+// catalog with an id that the API never published, so its fields never decoded.
+type VMwareDiskType = VmwareLocationDiskType
 
 // VMwareGPUModel represents a GPU model available to the partner together with
-// its allocation limits
+// its allocation limits.
+//
+// Deprecated: use VmwareGPUModel, which tells an absent MaxServerRamMB /
+// IsAvailable from a zero one. GetVMwareGPUModels is superseded by
+// GetVmwareGPUModelList.
 type VMwareGPUModel struct {
 	ID        int    `json:"id"`
 	TechTitle string `json:"tech_title"`
@@ -55,19 +49,10 @@ type VMwareGPUModel struct {
 	IsAvailable bool `json:"is_available"`
 }
 
-// VMwareStorageProfile represents an active storage profile for a
-// location/disk type combination
-type VMwareStorageProfile struct {
-	ID         int    `json:"id"`
-	Name       string `json:"name"`
-	DiskTypeID int    `json:"disk_type_id"`
-	IsDefault  bool   `json:"is_default"`
-	// FreeSpaceGB is int64: profile capacity is reported in gigabytes and can
-	// exceed the range of a 32-bit integer.
-	FreeSpaceGB int64 `json:"free_space_gb"`
-}
-
-// VMwareImage represents an OS image (template) available to the project
+// VMwareImage represents an OS image (template) available to the project.
+//
+// Deprecated: use VmwareImage. GetVMwareImages is superseded by
+// GetVmwareImageList, whose gpu filter has three states rather than two.
 type VMwareImage struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`

@@ -107,9 +107,9 @@ The client exposes methods for the following resources:
 - **DNS** zones and records
 - **Gateways**
 - **Affinity groups**
-- **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall), networks (isolated/routed/public), edge (firewall/NAT/VPN) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
+- **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall, nested virtualization), networks (isolated/routed/public), edge (firewall/NAT/VPN) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
 - **Project metadata** — locations, images, applications, tasks
-- **VMware catalog** (read-only) — locations, disk types, GPU models, storage profiles, images
+- **VMware catalog** (read-only) — locations with their disk types, OS images, GPU slicing profiles
 
 Most mutating operations that trigger a background task provide an `...AndWait` variant
 (for example `CreateServerAndWait`) that polls the task until it finishes:
@@ -120,22 +120,33 @@ server, err := client.CreateServerAndWait(ctx, &entities.CreateServerRequest{ /*
 
 ### VMware catalog
 
-`GetVMwareLocations`, `GetVMwareDiskTypes`, `GetVMwareGPUModels`,
-`GetVMwareStorageProfiles` and `GetVMwareImages` read the lookups of the VMware
-section (`/api/v1/vmware`). They are separate from the vStack lookups
-(`GetLocations`, `GetImages`), which describe a different platform and use string
-identifiers.
+`GetVmwareLocationList`, `GetVmwareImageList` and `GetVmwareGPUModelList` read
+the three lookups the VMware section publishes (`/api/v1/vmware`). They are
+separate from the vStack lookups (`GetLocations`, `GetImages`), which describe a
+different platform and use string identifiers.
 
-The optional `location_id` / `disk_type_id` filters take `0` for "no filter";
-an unknown (but positive) id is rejected by the API with a 400 that
+Disk types are **not** a catalog of their own: each location carries the disk
+types offered in it (`VmwareLocation.DiskTypes`), with the sizes in megabytes to
+match `system_disk_size_mb` / `size_mb`, and `Title` as the value the create and
+verify requests take. Storage profiles are not published at all.
+
+An unknown (but positive) location id is rejected by the API with a 400 that
 `sdk.IsInvalidLocation` recognises:
 
 ```go
-diskTypes, err := client.GetVMwareDiskTypes(ctx, locationID)
+locations, err := client.GetVmwareLocationList(ctx)
+images, err := client.GetVmwareImageList(ctx, &locations[0].ID, nil)
 if sdk.IsInvalidLocation(err) {
-	log.Fatalf("unknown VMware location %d", locationID)
+	log.Fatalf("unknown VMware location")
 }
 ```
+
+`GetVMwareLocations`, `GetVMwareImages` and `GetVMwareGPUModels` are the older
+form of the same three reads and are **deprecated** — they answer with a lossier
+model (no three-state GPU filter, no way to tell an absent GPU limit from a zero
+one). Use the `GetVmware*List` family. `GetVMwareDiskTypes` and
+`GetVMwareStorageProfiles` are gone: `/vmware/disk-types` and
+`/vmware/storage-profiles` are not part of the Public API and always answered 404.
 
 ## Error handling
 
