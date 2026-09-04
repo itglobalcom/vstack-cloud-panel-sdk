@@ -3,10 +3,10 @@ package entities
 // Superseded VMware catalog (lookup) entities.
 //
 // These types back the GetVMware* catalog methods, which the GetVmware*List
-// methods of vmware_metainfo.go replaced. They describe the same three endpoints
-// (api/v1/vmware/locations, /images, /gpu-models) in an older, lossier shape and
-// are kept only so that published code keeps compiling — new code should use the
-// VmwareLocation, VmwareImage and VmwareGPUModel types instead.
+// methods of vmware_metainfo.go supersede. They describe the same endpoints in an
+// older, lossier shape and stay published so that existing code keeps compiling —
+// new code should use the VmwareLocation, VmwareImage and VmwareGPUModel types
+// instead.
 //
 // They are distinct from the vStack lookups in metainfo.go (Location, Image),
 // which describe a different platform and use string identifiers.
@@ -17,14 +17,42 @@ package entities
 // superseded by GetVmwareLocationList.
 type VMwareLocation = VmwareLocation
 
-// VMwareDiskType represents a disk type offered in a location.
+// VMwareDiskType represents a disk type allowed by the partner/location tariff.
 //
-// Deprecated: use VmwareLocationDiskType, which this now names. There is no
-// standalone disk-type catalog: disk types travel inside VmwareLocation.DiskTypes,
-// their sizes are in megabytes, they carry no id, and the write-side selection key
-// is Title. The previous definition of this type described a gigabyte-based
-// catalog with an id that the API never published, so its fields never decoded.
-type VMwareDiskType = VmwareLocationDiskType
+// Deprecated: use VmwareLocationDiskType, reached through VmwareLocation.DiskTypes.
+// The fields below do not match the wire: the Public API publishes disk types
+// inside a location, without an id and with the limits in megabytes, so every
+// field of this type decodes to zero. Only GetVMwareDiskTypes, itself deprecated,
+// fills it.
+type VMwareDiskType struct {
+	ID    int    `json:"id"`
+	Title string `json:"title"`
+	// MinGB, MaxGB, StepGB and StartValueGB describe the allowed volume sizes:
+	// a size must lie in [MinGB, MaxGB] and be a multiple of StepGB;
+	// StartValueGB is the value the panel offers by default.
+	MinGB                  int  `json:"min_gb"`
+	MaxGB                  int  `json:"max_gb"`
+	StepGB                 int  `json:"step_gb"`
+	StartValueGB           int  `json:"start_value_gb"`
+	IsAllowedForSystemDisk bool `json:"is_allowed_for_system_disk"`
+	IsSSD                  bool `json:"is_ssd"`
+}
+
+// VMwareStorageProfile represents an active storage profile for a
+// location/disk type combination.
+//
+// Deprecated: the Public API publishes no storage-profile resource — profiles are
+// an internal join behind a location's disk types. Only GetVMwareStorageProfiles,
+// itself deprecated, fills it.
+type VMwareStorageProfile struct {
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	DiskTypeID int    `json:"disk_type_id"`
+	IsDefault  bool   `json:"is_default"`
+	// FreeSpaceGB is int64: profile capacity is reported in gigabytes and can
+	// exceed the range of a 32-bit integer.
+	FreeSpaceGB int64 `json:"free_space_gb"`
+}
 
 // VMwareGPUModel represents a GPU model available to the partner together with
 // its allocation limits.

@@ -27,6 +27,18 @@ func TestBuildVMwarePath(t *testing.T) {
 		t.Errorf("both filters: got %q, want %q", got, want)
 	}
 
+	idFilters := url.Values{}
+	if err := addIDFilter(idFilters, "location_id", 2); err != nil {
+		t.Fatalf("location_id filter: %v", err)
+	}
+	if err := addIDFilter(idFilters, "disk_type_id", 7); err != nil {
+		t.Fatalf("disk_type_id filter: %v", err)
+	}
+	want = "vmware/storage-profiles?disk_type_id=7&location_id=2"
+	if got := buildVMwarePath(vmwareStorageProfilesPath, idFilters); got != want {
+		t.Errorf("both id filters: got %q, want %q", got, want)
+	}
+
 	// An empty (but non-nil) set of filters must not add a bare "?".
 	if got := buildVMwarePath(vmwareImagesPath, url.Values{}); got != "vmware/images" {
 		t.Errorf("empty filters: got %q", got)
@@ -66,8 +78,14 @@ func TestGetVMwareCatalogRejectsNegativeID(t *testing.T) {
 	client := newTestClient(t, noRequestHandler(t))
 	ctx := context.Background()
 
+	if _, err := client.GetVMwareDiskTypes(ctx, -1); err == nil {
+		t.Error("GetVMwareDiskTypes must reject a negative location_id")
+	}
 	if _, err := client.GetVMwareGPUModels(ctx, -1); err == nil {
 		t.Error("GetVMwareGPUModels must reject a negative location_id")
+	}
+	if _, err := client.GetVMwareStorageProfiles(ctx, 2, -1); err == nil {
+		t.Error("GetVMwareStorageProfiles must reject a negative disk_type_id")
 	}
 	if _, err := client.GetVMwareImages(ctx, -1, false); err == nil {
 		t.Error("GetVMwareImages must reject a negative location_id")
@@ -111,6 +129,58 @@ func TestParseVMwareLocationsResponse(t *testing.T) {
 	// The limits are in megabytes, matching system_disk_size_mb / size_mb.
 	if dt.MinMB != 10240 || dt.MaxMB != 2048000 || dt.StepMB != 10240 || dt.DefaultSizeMB != 61440 {
 		t.Errorf("disk type size limits: %+v", dt)
+	}
+}
+
+// The deprecated disk-type and storage-profile shapes stay published, so their
+// tags stay covered even though the routes answer 404.
+func TestParseVMwareDiskTypesResponse(t *testing.T) {
+	body := []byte(`{"disk_types":[{
+		"id":3,"title":"SSD","min_gb":10,"max_gb":2048,"step_gb":10,
+		"start_value_gb":20,"is_allowed_for_system_disk":true,"is_ssd":true
+	}]}`)
+
+	var resp ListVMwareDiskTypesResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(resp.DiskTypes) != 1 {
+		t.Fatalf("got %d disk types, want 1", len(resp.DiskTypes))
+	}
+	dt := resp.DiskTypes[0]
+	if dt.ID != 3 || dt.Title != "SSD" {
+		t.Errorf("id/title: %+v", dt)
+	}
+	if dt.MinGB != 10 || dt.MaxGB != 2048 || dt.StepGB != 10 || dt.StartValueGB != 20 {
+		t.Errorf("size limits: %+v", dt)
+	}
+	if !dt.IsAllowedForSystemDisk || !dt.IsSSD {
+		t.Errorf("flags: %+v", dt)
+	}
+}
+
+func TestParseVMwareStorageProfilesResponse(t *testing.T) {
+	// free_space_gb is int64: profile capacity does not fit into int32.
+	body := []byte(`{"storage_profiles":[{
+		"id":11,"name":"SSD-Fast","disk_type_id":3,"is_default":true,
+		"free_space_gb":5000000000
+	}]}`)
+
+	var resp ListVMwareStorageProfilesResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(resp.StorageProfiles) != 1 {
+		t.Fatalf("got %d profiles, want 1", len(resp.StorageProfiles))
+	}
+	p := resp.StorageProfiles[0]
+	if p.ID != 11 || p.Name != "SSD-Fast" || p.DiskTypeID != 3 || !p.IsDefault {
+		t.Errorf("profile: %+v", p)
+	}
+	if p.FreeSpaceGB != 5000000000 {
+		t.Errorf("free_space_gb = %d, want 5000000000", p.FreeSpaceGB)
 	}
 }
 

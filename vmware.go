@@ -16,6 +16,12 @@ const (
 	vmwareLocationsPath = "locations"
 	vmwareImagesPath    = "images"
 	vmwareGPUModelsPath = "gpu-models"
+
+	// Deprecated: these two resources are not served under api/v1. They exist
+	// only under the AdminV2 prefix (vmware-disk-types, vmware-storage-profiles),
+	// so a Public API request for them is answered with 404.
+	vmwareDiskTypesPath       = "disk-types"
+	vmwareStorageProfilesPath = "storage-profiles"
 )
 
 // Response types for the superseded VMware catalog (lookup) operations
@@ -25,6 +31,22 @@ type (
 	// Deprecated: GetVmwareLocationList supersedes GetVMwareLocations.
 	ListVMwareLocationsResponse struct {
 		Locations []entities.VMwareLocation `json:"locations,omitempty"`
+	}
+
+	// ListVMwareDiskTypesResponse represents a VMware disk types list response
+	//
+	// Deprecated: the response of GetVMwareDiskTypes, which the Public API does
+	// not serve. Disk types arrive inside VmwareLocation.DiskTypes.
+	ListVMwareDiskTypesResponse struct {
+		DiskTypes []entities.VMwareDiskType `json:"disk_types,omitempty"`
+	}
+
+	// ListVMwareStorageProfilesResponse represents a VMware storage profiles list response
+	//
+	// Deprecated: the response of GetVMwareStorageProfiles, which the Public API
+	// does not serve.
+	ListVMwareStorageProfilesResponse struct {
+		StorageProfiles []entities.VMwareStorageProfile `json:"storage_profiles,omitempty"`
 	}
 
 	// ListVMwareGPUModelsResponse represents a VMware GPU models list response
@@ -56,7 +78,7 @@ func buildVMwarePath(resource string, filters url.Values) string {
 //
 // Zero means "filter not specified" — a deliberate contract: the API treats an
 // absent parameter as no filter, and 0 is not a member of DCLocationEnum, so it
-// can never be a real location identifier.
+// can never be a real location / disk type identifier.
 //
 // A negative value is a caller error and is reported as such instead of being
 // dropped: silently omitting the filter would answer a broken id with the full
@@ -91,6 +113,61 @@ func (c *CloudClient) GetVMwareLocations(ctx context.Context) ([]entities.VMware
 	}
 
 	return resp.Locations, nil
+}
+
+// GetVMwareDiskTypes retrieves the VMware disk types allowed for the project.
+// locationID is optional — pass 0 to list the disk types of every location.
+//
+// Deprecated: read VmwareLocation.DiskTypes from GetVmwareLocationList instead.
+// /vmware/disk-types is not a Public API route — the catalog exists only under
+// the AdminV2 prefix — so this call is always answered with 404.
+func (c *CloudClient) GetVMwareDiskTypes(ctx context.Context, locationID int) ([]entities.VMwareDiskType, error) {
+	filters := url.Values{}
+	if err := addIDFilter(filters, "location_id", locationID); err != nil {
+		return nil, err
+	}
+
+	path := buildVMwarePath(vmwareDiskTypesPath, filters)
+	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create list VMware disk types request: %w", err)
+	}
+
+	var resp ListVMwareDiskTypesResponse
+	if err := c.doJSON(req, &resp); err != nil {
+		return nil, fmt.Errorf("failed to list VMware disk types: %w", err)
+	}
+
+	return resp.DiskTypes, nil
+}
+
+// GetVMwareStorageProfiles retrieves the active VMware storage profiles.
+// Both filters are optional — pass 0 to skip a filter.
+//
+// Deprecated: the Public API publishes no storage-profile resource — profiles are
+// an internal join behind a location's disk types. /vmware/storage-profiles exists
+// only under the AdminV2 prefix, so this call is always answered with 404.
+func (c *CloudClient) GetVMwareStorageProfiles(ctx context.Context, locationID, diskTypeID int) ([]entities.VMwareStorageProfile, error) {
+	filters := url.Values{}
+	if err := addIDFilter(filters, "location_id", locationID); err != nil {
+		return nil, err
+	}
+	if err := addIDFilter(filters, "disk_type_id", diskTypeID); err != nil {
+		return nil, err
+	}
+
+	path := buildVMwarePath(vmwareStorageProfilesPath, filters)
+	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create list VMware storage profiles request: %w", err)
+	}
+
+	var resp ListVMwareStorageProfilesResponse
+	if err := c.doJSON(req, &resp); err != nil {
+		return nil, fmt.Errorf("failed to list VMware storage profiles: %w", err)
+	}
+
+	return resp.StorageProfiles, nil
 }
 
 // GetVMwareGPUModels retrieves the VMware GPU models available to the partner.

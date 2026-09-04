@@ -4,15 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0]
 
 Adds support for the **VMware Cloud** service and brings the base task model up to
 the unified model the API publishes.
 
-**This release removes published declarations** (see Removed) — the version number
-has to be chosen accordingly, which is why the heading carries none yet. Nothing
-that worked before stops working: every removed method addressed a route the
-Public API does not serve, and every changed field never decoded.
+The release is additive: nothing published is removed, and the declarations that
+describe routes the Public API does not serve are marked deprecated instead (see
+Deprecated).
 
 ### Added
 
@@ -107,30 +106,30 @@ Public API does not serve, and every changed field never decoded.
 - `GetVMwareImages` sends the real GPU filter, `gpu=required`. It sent
   `gpu_only=true`, which is not a declared parameter of the endpoint and was dropped:
   asking for GPU-only images answered with every image.
-- `GetVMwareLocations`, `GetVMwareImages` and `GetVMwareGPUModels` are **deprecated** in
-  favour of `GetVmwareLocationList`, `GetVmwareImageList` and `GetVmwareGPUModelList`.
 - `WaitVmwareTask` logs when a configured `PollingTimeout` below the VMware floor is
   raised, so the effective wait is discoverable from the log.
 - Documented previously undocumented exported declarations (`RetryReason.String`,
   `DefaultRetryPolicy`, `ValidationError`, `NewValidationError`, `CreateNetworkRequest`,
   `UpdateNetworkRequest`, `CreateServerTagRequest`).
 
-### Removed
+### Deprecated
 
-Breaking at compile time. Both methods addressed routes the Public API does not serve,
-and both fields sets never decoded, so no working behaviour is lost.
+Nothing is removed — every declaration below stays published and keeps compiling.
 
+- `GetVMwareLocations`, `GetVMwareImages` and `GetVMwareGPUModels`, in favour of
+  `GetVmwareLocationList`, `GetVmwareImageList` and `GetVmwareGPUModelList`.
 - `GetVMwareDiskTypes` and `GetVMwareStorageProfiles`, with
   `ListVMwareDiskTypesResponse`, `ListVMwareStorageProfilesResponse` and
   `entities.VMwareStorageProfile`. `/vmware/disk-types` and `/vmware/storage-profiles`
-  exist only under the AdminV2 prefix; through the Public API both always answered 404.
-  Disk types travel inside the location (`VmwareLocation.DiskTypes`); storage profiles
-  are not published.
-- The fields of `entities.VMwareDiskType` (`ID`, `MinGB`, `MaxGB`, `StepGB`,
-  `StartValueGB`). The type now names `VmwareLocationDiskType`, which matches the
-  contract: megabytes, no id, selected by `Title`. `entities.VMwareLocation` likewise
-  names `VmwareLocation`, so it gains `DiskTypes` and `NestedHypervisorSupported`; its
-  three previous fields are unchanged.
+  exist only under the AdminV2 prefix; through the Public API both answer 404. Disk
+  types travel inside the location (`VmwareLocation.DiskTypes`); storage profiles are
+  not published at all.
+- `entities.VMwareDiskType`, in favour of `entities.VmwareLocationDiskType`. Its fields
+  (`ID`, `MinGB`, `MaxGB`, `StepGB`, `StartValueGB`) do not match the wire — the
+  contract publishes disk types inside a location, without an id and in megabytes — so
+  they decode to zero.
+- `entities.VMwareLocation` now names `VmwareLocation`, so it gains `DiskTypes` and
+  `NestedHypervisorSupported`; its three previous fields are unchanged.
 
 ### Notes for VMware Cloud users
 

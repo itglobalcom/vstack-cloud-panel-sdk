@@ -158,8 +158,9 @@ if sdk.IsInvalidLocation(err) {
 form of the same three reads and are **deprecated** — they answer with a lossier
 model (no three-state GPU filter, no way to tell an absent GPU limit from a zero
 one). Use the `GetVmware*List` family. `GetVMwareDiskTypes` and
-`GetVMwareStorageProfiles` are gone: `/vmware/disk-types` and
-`/vmware/storage-profiles` are not part of the Public API and always answered 404.
+`GetVMwareStorageProfiles` are deprecated as well and stay published only so that
+existing code keeps compiling: `/vmware/disk-types` and `/vmware/storage-profiles`
+exist only under the AdminV2 prefix, so through the Public API they answer 404.
 
 ## Error handling
 
