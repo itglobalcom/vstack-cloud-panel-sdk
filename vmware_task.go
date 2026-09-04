@@ -19,12 +19,10 @@ const VmwareTaskIDPrefix = "vmw"
 // VmwareTaskID references a VMware background task.
 //
 // This is deliberately a distinct type from TaskID even though both decode
-// the same {"task_id": …} body. VMware tasks and base tasks share the
-// GET /tasks/{id} endpoint but answer with structurally different bodies, so
-// feeding one family's id to the other family's helper is a bug. Keeping the
-// types apart makes the mistake a compile error at every call site that passes a
-// task reference around, and GetVmwareTask/GetTask reject a foreign id outright
-// (see IsVmwareTaskID) for the cases where only the bare string travels.
+// the same {"task_id": …} body. The two families differ in how they are awaited
+// and in how their resource ids are shaped, so passing one family's reference to
+// the other family's helper is a bug; keeping the types apart makes it a compile
+// error at every call site that hands a task reference around.
 type VmwareTaskID struct {
 	ID string `json:"task_id,omitempty"`
 }
@@ -60,15 +58,18 @@ type vmwareTaskResponse struct {
 // GetVmwareTask returns the status of a VMware task by its id (a string of the
 // form "vmw{N}").
 //
-// A base task id is rejected before the request is sent. The two families
-// share the GET /tasks/{id} path but return different bodies, and decoding a base
-// task here would either fail with a confusing unmarshal error or silently yield
-// an empty State. Use GetTask for base task ids.
+// A base task id is rejected before the request is sent. Its body would decode
+// into entities.VmwareTask — the unified task model is the same for every
+// service — but VmwareTask.ServerID and NetworkID read a resource id as a decimal
+// integer, which is how VMware and only VMware addresses a resource: a vStack
+// task's encoded ids would come back as "not present". Use GetTask for base task
+// ids; it decodes any family.
 func (c *CloudClient) GetVmwareTask(ctx context.Context, taskID string) (*entities.VmwareTask, error) {
 	if taskID == "" {
 		return nil, fmt.Errorf("task ID is required")
 	}
-	// Fail loudly on a base task id instead of misdecoding its body.
+	// Fail loudly on a base task id instead of handing back a model whose
+	// resource accessors cannot read it.
 	if !IsVmwareTaskID(taskID) {
 		return nil, fmt.Errorf("task ID %q is not a VMware task ID (expected the %q prefix); use GetTask for base tasks", taskID, VmwareTaskIDPrefix)
 	}
@@ -137,7 +138,8 @@ func (c *CloudClient) WaitVmwareTaskWithTimeout(ctx context.Context, taskID stri
 	if taskID == "" {
 		return nil, fmt.Errorf("task ID is required")
 	}
-	// Reject a base task id here too - the wait loop would hang on it.
+	// Reject a base task id here too, for the same reason as GetVmwareTask: the
+	// returned model would misread its resource ids.
 	if !IsVmwareTaskID(taskID) {
 		return nil, fmt.Errorf("task ID %q is not a VMware task ID (expected the %q prefix); use WaitServerTaskCompletion for base tasks", taskID, VmwareTaskIDPrefix)
 	}

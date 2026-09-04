@@ -14,11 +14,18 @@ const (
 	tasksBaseURL = "tasks"
 )
 
-// Task completion statuses
-const (
-	taskStatusCompleted = "Completed"
-	taskStatusFailed    = "Failed"
-)
+// AlreadyCompletedTaskID is the synthetic task id the vStack delete operations
+// that run synchronously return when asked for a task (?return_task=true): no
+// real task is created, and tasks/already_completed_task always answers
+// Completed. A caller that awaits whatever id the API handed it does not have to
+// tell the synchronous case apart.
+const AlreadyCompletedTaskID = "already_completed_task"
+
+// IsAlreadyCompletedTaskID reports whether taskID is the synthetic
+// always-completed task id — see AlreadyCompletedTaskID.
+func IsAlreadyCompletedTaskID(taskID string) bool {
+	return taskID == AlreadyCompletedTaskID
+}
 
 // TaskID wraps a task ID from API responses
 type TaskID struct {
@@ -30,23 +37,23 @@ type taskResponseWrap struct {
 	Task *entities.TaskResponse `json:"task,omitempty"`
 }
 
-// GetTask retrieves a specific task by ID.
+// GetTask retrieves a specific task by ID, in any of the task ID formats the
+// endpoint serves: vStack ("l{N}t{N}"), DNS ("dns{N}"), Kubernetes
+// ("k8s_{f|m}{N}") and VMware ("vmw{N}").
 //
-// TaskID must be a base task ID (for example "l{N}t{N}", "dns{N}",
-// "k8s_{f|m}{N}"). A VMware task ID (of the form "vmw{N}") is rejected before the
-// request is sent — use GetVmwareTask for those. Both kinds share the "tasks/{id}"
-// endpoint but answer with different bodies: a VMware task carrying a
-// server_id/network_id has numeric fields where entities.TaskResponse expects
-// strings, so decoding one here used to fail with an unmarshal error that looked
-// like a broken API, and one without those fields decoded but left IsCompleted
-// empty, hanging the wait on an already-finished task.
+// entities.TaskResponse decodes all of them. The unified part of the model
+// (state, type, progress, timestamps, Resources) is identical for every service,
+// and the deprecated per-resource ID fields a given service does not send simply
+// stay empty — a VMware task sends none of them and reports its server and
+// network through Resources only.
+//
+// GetVmwareTask returns the same VMware task in the VMware-typed model, whose
+// ServerID/NetworkID accessors hand back ints. Waiting, unlike reading, is not
+// family-agnostic: VMware tasks run far longer than the base PollingTimeout, so
+// await them with WaitVmwareTask.
 func (c *CloudClient) GetTask(ctx context.Context, taskID string) (*entities.TaskResponse, error) {
-	// Reject a VMware task id up front. Without this the request succeeds and
-	// the failure surfaces either as an unmarshal error (when the task carries a
-	// numeric server_id/network_id) or as a silently empty IsCompleted, which then
-	// hangs waitTaskCompletion on an already-finished task.
-	if IsVmwareTaskID(taskID) {
-		return nil, fmt.Errorf("task ID %q is a VMware task ID; use GetVmwareTask instead", taskID)
+	if taskID == "" {
+		return nil, fmt.Errorf("task ID is required")
 	}
 	path := fmt.Sprintf("%s/%s", tasksBaseURL, taskID)
 
@@ -70,6 +77,22 @@ func (c *CloudClient) waitTaskCompletion(ctx context.Context, taskID string) (*e
 
 // waitTaskCompletionWithTimeout waits for a task to complete with custom timeout
 func (c *CloudClient) waitTaskCompletionWithTimeout(ctx context.Context, taskID string, timeout time.Duration) (*entities.TaskResponse, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("task ID is required")
+	}
+	// A VMware task is readable here but must not be awaited here: those tasks
+	// routinely run for tens of minutes (VmwareTaskWaitDefaultTimeout), so this
+	// wait would report a timeout on a healthy operation.
+	if IsVmwareTaskID(taskID) {
+		return nil, fmt.Errorf("task ID %q is a VMware task ID; use WaitVmwareTask instead", taskID)
+	}
+	// The synthetic task has no state to poll for: the API answers Completed for
+	// it unconditionally, so the answer is produced without a request.
+	if IsAlreadyCompletedTaskID(taskID) {
+		c.logger.Debug("Task %s is the synthetic always-completed task; nothing to wait for", taskID)
+		return &entities.TaskResponse{ID: taskID, IsCompleted: entities.TaskStateCompleted}, nil
+	}
+
 	c.logger.Info("Starting to wait for task %s (timeout: %v, interval: %v)",
 		taskID, timeout, c.config.PollingInterval)
 
@@ -107,24 +130,23 @@ func (c *CloudClient) waitTaskCompletionWithTimeout(ctx context.Context, taskID 
 		c.logger.Debug("Task %s status: %s (attempt %d, elapsed: %v)",
 			taskID, task.IsCompleted, attempt, time.Since(startTime))
 
-		// Check completion
-		switch task.IsCompleted {
-		case taskStatusCompleted:
+		// Leave the loop on any terminal state, then classify it: a canceled
+		// task is as final as a failed one, and polling it to the timeout would
+		// report a timeout for an outcome the API already gave.
+		if task.IsTerminal() {
 			elapsed := time.Since(startTime)
-			c.logger.Info("Task %s completed successfully after %v (%d attempts)",
-				taskID, elapsed, attempt)
-			return task, nil
-
-		case taskStatusFailed:
-			elapsed := time.Since(startTime)
-			c.logger.Error("Task %s failed after %v (%d attempts)",
-				taskID, elapsed, attempt)
-			return nil, fmt.Errorf("task %s failed with status %s: %w", taskID, task.IsCompleted, ErrTaskFailed)
-
-		default:
-			// Task is still running, wait for next iteration
-			c.logger.Debug("Task %s is still in progress: status=%s", taskID, task.IsCompleted)
+			if task.IsSucceeded() {
+				c.logger.Info("Task %s completed successfully after %v (%d attempts)",
+					taskID, elapsed, attempt)
+				return task, nil
+			}
+			c.logger.Error("Task %s finished with status %s after %v (%d attempts)",
+				taskID, task.IsCompleted, elapsed, attempt)
+			return nil, fmt.Errorf("task %s finished with status %s: %w", taskID, task.IsCompleted, ErrTaskFailed)
 		}
+
+		// Task is still running, wait for next iteration
+		c.logger.Debug("Task %s is still in progress: status=%s", taskID, task.IsCompleted)
 
 		// Wait for next tick or timeout
 		select {
@@ -227,9 +249,10 @@ func (c *CloudClient) WaitServerActiveWithTimeout(ctx context.Context, serverID 
 
 // WaitServerTaskCompletion waits for task completion and then for server to become Active.
 //
-// TaskID must be a base task ID. It is polled through GetTask, which rejects a
-// VMware task ID ("vmw{N}"); wait for VMware tasks with WaitVmwareTask instead. Note
-// also that serverID is a base string server ID — VMware servers are keyed by int.
+// TaskID must be a base task ID: a VMware task ID ("vmw{N}") is rejected,
+// because VMware tasks need the VMware timeouts — wait for those with
+// WaitVmwareTask. Note also that serverID is a base string server ID — VMware
+// servers are keyed by int.
 func (c *CloudClient) WaitServerTaskCompletion(ctx context.Context, serverID string, taskID string) (*entities.Server, error) {
 	// First wait for task to complete
 	if _, err := c.waitTaskCompletion(ctx, taskID); err != nil {
