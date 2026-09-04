@@ -21,7 +21,7 @@ import (
 // paths are covered. A platform-level rejection is reported and the run continues;
 // the tally at the end says what passed.
 //
-// Methods covered (43): VerifyVmwareServer, CreateVmwareServer(+AndWait),
+// Methods covered (47): VerifyVmwareServer, CreateVmwareServer(+AndWait),
 // GetVmwareServerList, GetVmwareServer, WaitVmwareServerActive/State/Gone,
 // GetVmwareServerFirewall, UpdateVmwareServerFirewall(+AndWait),
 // GetVmwareServerVolumes, GetVmwareVolume, CreateVmwareVolume(+AndWait),
@@ -33,7 +33,8 @@ import (
 // PowerOn/PowerOff/Shutdown/Reboot/Reset VmwareServer(+AndWait),
 // ChangeVmwareServerConfiguration(+AndWait), RenameVmwareServer,
 // ChangeVmwareServerComputerName(+AndWait), CopyVmwareServer(+AndWait),
-// RebuildVmwareServer(+AndWait), DeleteVmwareServer(+AndWait).
+// RebuildVmwareServer(+AndWait), DeleteVmwareServer(+AndWait),
+// Enable/Disable VmwareServerNestedHypervisor(+AndWait).
 func runVmwareServerExample(ctx context.Context, client *sdk.CloudClient) {
 	fmt.Println("=== VMware Cloud server example ===")
 	if vmwareExampleSkipLong() {
@@ -495,6 +496,28 @@ func runVmwareServerExample(ctx context.Context, client *sdk.CloudClient) {
 	powered, err = client.PowerOffVmwareServerAndWait(ctx, serverID)
 	run.check("PowerOffVmwareServerAndWait", err, "power=%v state=%s", powerOf(powered), stateOf(powered))
 
+	// ---------- Nested hypervisor ----------
+	//
+	// Both forms are exercised, and both are called twice: the second call is the
+	// idempotent case, where no task is created and the reference comes back
+	// empty. The feature is per-location, so a location without it answers 400.
+	section("Nested hypervisor")
+	if t, err := client.EnableVmwareServerNestedHypervisor(ctx, serverID); run.check(
+		"EnableVmwareServerNestedHypervisor", err, "task=%s", t.String()) {
+		_, err = client.WaitVmwareTaskRef(ctx, t)
+		run.check("WaitVmwareTaskRef(nested hypervisor on)", err, "enabled")
+
+		if t, err := client.EnableVmwareServerNestedHypervisor(ctx, serverID); run.check(
+			"EnableVmwareServerNestedHypervisor(already on)", err, "task=%q empty=%v", t.String(), t.IsZero()) {
+			_, err = client.WaitVmwareTaskRef(ctx, t)
+			run.check("WaitVmwareTaskRef(no task)", err, "nothing to await")
+		}
+	}
+	nested, err := client.DisableVmwareServerNestedHypervisorAndWait(ctx, serverID)
+	run.check("DisableVmwareServerNestedHypervisorAndWait", err, "nested_hypervisor=%v", nestedOf(nested))
+	nested, err = client.DisableVmwareServerNestedHypervisorAndWait(ctx, serverID)
+	run.check("DisableVmwareServerNestedHypervisorAndWait(already off)", err, "nested_hypervisor=%v", nestedOf(nested))
+
 	// ---------- Configuration, names ----------
 	section("Configuration and names")
 	server, err = client.GetVmwareServer(ctx, serverID)
@@ -703,6 +726,15 @@ func stateOf(s *entities.VmwareServer) string {
 		return "<nil>"
 	}
 	return s.State
+}
+
+// nestedOf reports the nested-virtualization flag of a server, tolerating the
+// nil a failed call hands back.
+func nestedOf(s *entities.VmwareServer) any {
+	if s == nil {
+		return "n/a"
+	}
+	return s.NestedHypervisor
 }
 
 func powerOf(s *entities.VmwareServer) any {

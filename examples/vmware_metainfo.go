@@ -33,8 +33,8 @@ func runVmwareMetainfoExample(ctx context.Context, client *sdk.CloudClient) {
 	}
 	step("locations: %d", len(locations))
 	for _, loc := range locations {
-		step("#%d %s — GPU supported: %v, disk types: %d",
-			loc.ID, loc.TechTitle, loc.GPUSupported, len(loc.DiskTypes))
+		step("#%d %s — GPU supported: %v, nested hypervisor: %v, disk types: %d",
+			loc.ID, loc.TechTitle, loc.GPUSupported, loc.NestedHypervisorSupported, len(loc.DiskTypes))
 		// Disk types are published per location, not as a standalone
 		// catalog. Title is the value the create/verify requests take, and the
 		// limits are in MB to match system_disk_size_mb / size_mb.
@@ -140,15 +140,21 @@ func runVmwareMetainfoExample(ctx context.Context, client *sdk.CloudClient) {
 		sdk.VmwareTaskIDPrefix, sdk.IsVmwareTaskID("vmw123"), sdk.IsVmwareTaskID("l1t2"))
 	step("WaitVmwareTask timeout floor: %v", sdk.VmwareTaskWaitDefaultTimeout)
 
-	// Passing a base id to a VMware helper (or the other way round) is refused up
-	// front rather than producing a confusing unmarshal error or a wait that hangs
-	// on an already-finished task.
+	// Passing a base id to a VMware helper is refused up front: the VMware model
+	// reads resource ids as ints, which is not how a base task addresses them.
 	if _, err := client.GetVmwareTask(ctx, "l1t2"); err != nil {
 		step("GetVmwareTask(\"l1t2\") rejected: %v", err)
 	}
-	if _, err := client.GetTask(ctx, "vmw1"); err != nil {
-		step("GetTask(\"vmw1\") rejected: %v", err)
+	// Reading, unlike waiting, is family-agnostic: GetTask takes a VMware id too
+	// and reports the resources through TaskResponse.Resources. Waiting is not —
+	// a VMware task outruns the base timeout, so WaitVmwareTask owns that.
+	if task, err := client.GetTask(ctx, "vmw1"); err != nil {
+		step("GetTask(\"vmw1\") -> %v (IsNotFound=%v)", err, sdk.IsNotFound(err))
+	} else {
+		step("GetTask(\"vmw1\") -> state=%s server=%q",
+			task.IsCompleted, task.ResourceID(entities.TaskResourceServer))
 	}
+	step("synthetic always-completed task id: %q", sdk.AlreadyCompletedTaskID)
 
 	// A nil task reference is the "answered synchronously, nothing to await" case
 	// and every wait helper tolerates it.
