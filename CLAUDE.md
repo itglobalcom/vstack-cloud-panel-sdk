@@ -57,7 +57,9 @@ Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сей
 
 ## Тесты
 
-- Только stdlib `testing`. Нет testify, httptest, моков, golden-файлов — так и оставить.
+- Только stdlib: `testing` и `net/http/httptest` — стаб-сервер поднимает хелпер
+  `newTestClient` (`gateway_internal_test.go`), сценарии с запросом идут через него.
+  Нет testify, моков, golden-файлов — так и оставить.
 - Файл `<домен>_internal_test.go`, `package sdk` (тестируются и приватные функции).
 - Паттерны: map-driven `cases := map[string]string{…}` для чистых функций; `t.Run` для
   сценариев; разбор контракта — unmarshal реального JSON-литерала в `ListXResponse`
