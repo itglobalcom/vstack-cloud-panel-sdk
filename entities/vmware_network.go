@@ -99,12 +99,15 @@ func (r *VmwareCreateRoutedNetworkRequest) Validate() error {
 type VmwareCreatePublicNetworkRequest struct {
 	LocationID int    `json:"location_id"`
 	Name       string `json:"name"`
-	// Capacity is the number of public addresses, as a decimal string (the shape
-	// the contract declares; the API happens to accept a JSON number too). Only a
-	// few sizes are valid — 1, 2 and 4 pass validation on the stand, while 8 and
-	// above are refused with -12042 "The capacity of public network is invalid".
-	// A valid size can still fail with -12043 "There is no free network at the
-	// moment" when the location has no free block left.
+	// Capacity is a subnet prefix length, not a number of addresses: the contract
+	// declares NetworkCapacityEnum, whose members are Network24…Network29 and which
+	// travels as a string. A decimal string such as "1" or "4" is accepted only
+	// because the API's StringEnumConverter also parses a member's numeric value,
+	// and the numbering does not follow the prefix — 1 is Network24, 2 is Network29,
+	// 3 is Network25, 4 is Network26, 5 is Network27, 6 is Network28. Anything
+	// outside the enum (8 and above) is refused with -12042 "The capacity of public
+	// network is invalid"; a valid value can still fail with -12043 "There is no
+	// free network at the moment" when the location has no free block left.
 	Capacity      string `json:"capacity"`
 	BandwidthMbps *int   `json:"bandwidth_mbps,omitempty"`
 }

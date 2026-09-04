@@ -708,8 +708,11 @@ func (c *CloudClient) DeleteVmwareVolumeAndWait(ctx context.Context, serverID, v
 
 // GetVmwareSnapshot returns the snapshot of a server (a server has at most one).
 //
-// A server with no snapshot answers HTTP 404, so IsNotFound(err) is the normal
-// "no snapshot" signal here rather than an error condition.
+// A server with no snapshot answers HTTP 200 with the body {} — the API sets the
+// snapshot field to null and its NullValueHandling.Ignore drops it — so the empty
+// answer is turned into ErrNotFound here. HTTP 404 means the server itself does
+// not exist, so IsNotFound(err) does not tell "no snapshot" from "no server";
+// errors.Is(err, ErrNotFound) is the "no snapshot" signal.
 func (c *CloudClient) GetVmwareSnapshot(ctx context.Context, serverID int) (*entities.VmwareSnapshot, error) {
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
