@@ -22,7 +22,9 @@ Deprecated).
   interfaces, and the server firewall.
 - **VMware Cloud networks**: isolated, routed and public networks, editing, deletion,
   and attaching servers in a batch.
-- **VMware Cloud edge gateway** (routed networks): firewall, NAT and IPsec VPN.
+- **VMware Cloud edge gateway** (routed networks): firewall, NAT, IPsec VPN and the
+  uplink bandwidth (`UpdateVmwareEdgeBandwidth`, `UpdateVmwareEdgeBandwidthAndWait`,
+  `entities.VmwareUpdateEdgeBandwidthRequest`).
 - **VMware Cloud catalogs**: locations (each carrying its disk types and their size
   limits), OS images with a GPU filter, and GPU slicing profiles.
 - `...AndWait` variants for every VMware mutator that starts a background task. They
@@ -139,12 +141,12 @@ Nothing is removed — every declaration below stays published and keeps compili
 Behaviour of the service API that the SDK cannot paper over, and that a control loop
 such as a Terraform provider has to account for:
 
-- **Edge bandwidth is the network's bandwidth.** Set it with `EditVmwareNetwork` and
-  read it from `VmwareNetwork.BandwidthMbps`. The SDK deliberately exposes no
-  `PUT /edge/bandwidth` wrapper, and this is the one operation in its scope that is
-  intentionally missing: the endpoint reports success without persisting anything.
-  Measured against live production — a request for 30 Mbit/s completed its task with
-  `Completed` while the network went on reporting `bandwidth_mbps: 20`.
+- **Edge bandwidth is the network's bandwidth.** `UpdateVmwareEdgeBandwidth` and
+  `EditVmwareNetwork` write the same field, and it is read from
+  `VmwareNetwork.BandwidthMbps` — the edge endpoint publishes no read. Against a
+  platform deployment older than the release that fixed `PUT /edge/bandwidth`, that
+  endpoint completes its task without persisting anything; use `EditVmwareNetwork`
+  there.
 - **A completed task is not a settled resource.** After a rebuild the replaced server
   stays readable in state `deleting` for minutes. Use the resource-state waiters.
 - **A create has happened even if the wait fails.** `CreateVmwareServerAndWait`,

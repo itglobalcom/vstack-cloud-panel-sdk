@@ -107,22 +107,22 @@ The client exposes methods for the following resources:
 - **DNS** zones and records
 - **Gateways**
 - **Affinity groups**
-- **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall, nested virtualization), networks (isolated/routed/public), edge (firewall/NAT/VPN) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
+- **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall, nested virtualization), networks (isolated/routed/public), edge (firewall/NAT/VPN/bandwidth) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
 - **Project metadata** — locations, images, applications, tasks
 - **VMware catalog** (read-only) — locations with their disk types, OS images, GPU slicing profiles
 
 ### Public API coverage
 
 The SDK's scope is every Public API operation except the Kubernetes section:
-**131 of those 132 operations** are implemented.
+all **132 of those operations** are implemented.
 
-The single gap is deliberate. `PUT /api/v1/vmware/networks/{id}/edge/bandwidth`
-is **not implemented, on purpose**: the endpoint does not work. Measured against
-live production — a request for 30 Mbit/s drove its task to `Completed` while the
-network kept reporting `bandwidth_mbps: 20`. Edge bandwidth and network bandwidth
-are the same field, so set it with `EditVmwareNetwork`
-(`VmwareEditNetworkRequest.BandwidthMbps`) and read it from
-`VmwareNetwork.BandwidthMbps`.
+One of them depends on the platform deployment. `PUT
+/api/v1/vmware/networks/{id}/edge/bandwidth` (`UpdateVmwareEdgeBandwidth`) applies
+the value only from the platform release that fixed it; an older deployment
+completes the task and keeps the previous bandwidth. Edge bandwidth and network
+bandwidth are the same field, so against such a deployment set it with
+`EditVmwareNetwork` (`VmwareEditNetworkRequest.BandwidthMbps`). Either way it is
+read from `VmwareNetwork.BandwidthMbps` — the edge endpoint has no read of its own.
 
 Most mutating operations that trigger a background task provide an `...AndWait` variant
 (for example `CreateServerAndWait`) that polls the task until it finishes:

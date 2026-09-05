@@ -139,10 +139,9 @@ func (r *VmwareCreatePublicNetworkRequest) Validate() error {
 // VmwareEditNetworkRequest represents a request to edit a network. Both fields
 // are optional; at least one must be provided.
 //
-// BandwidthMbps here is the ONLY way to set the bandwidth of a routed
-// network's edge - edge bandwidth and network bandwidth are one field. The former
-// PUT /edge/bandwidth endpoint is not exposed by the SDK because it never
-// persisted the value (see the note at the bottom of entities/vmware_edge.go).
+// BandwidthMbps here also sets the bandwidth of a routed network's edge - edge
+// bandwidth and network bandwidth are one field, so this and
+// VmwareUpdateEdgeBandwidthRequest write the same value.
 //
 // Bandwidth does not apply to an isolated
 // (private_client) network, and such a network no longer reports one -

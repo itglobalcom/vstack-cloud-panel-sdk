@@ -21,7 +21,7 @@ import (
 // raw call plus explicit wait, or the ...AndWait variant — so both paths are
 // covered.
 //
-// Methods covered (26): GetVmwareNetworkList, GetVmwareNetwork,
+// Methods covered (27): GetVmwareNetworkList, GetVmwareNetwork,
 // CreateVmwareIsolatedNetwork(+AndWait), CreateVmwareRoutedNetwork(+AndWait),
 // CreateVmwarePublicNetwork(+AndWait), EditVmwareNetwork(+AndWait),
 // DeleteVmwareNetwork(+AndWait), ConnectVmwareServers(+AndWait),
@@ -29,7 +29,7 @@ import (
 // UpdateVmwareEdgeFirewall(+AndWait), GetVmwareEdgeNAT,
 // UpsertVmwareEdgeNATRule(+AndWait), DeleteVmwareEdgeNATRule(+AndWait),
 // GetVmwareEdgeVPN, UpsertVmwareEdgeVPNTunnel(+AndWait),
-// DeleteVmwareEdgeVPNTunnel(+AndWait).
+// DeleteVmwareEdgeVPNTunnel(+AndWait), UpdateVmwareEdgeBandwidthAndWait.
 func runVmwareNetworkExample(ctx context.Context, client *sdk.CloudClient) {
 	fmt.Println("=== VMware Cloud network and edge example ===")
 	announceBillableRun(
@@ -161,9 +161,8 @@ func runVmwareNetworkExample(ctx context.Context, client *sdk.CloudClient) {
 	createdNetworks = append(createdNetworks, routedID)
 	printVmwareNetwork(routed)
 
-	// Bandwidth is one field shared by the network and its edge, and this is
-	// where it is set. The former PUT /edge/bandwidth is not exposed by the SDK
-	// because it never persisted the value.
+	// Bandwidth is one field shared by the network and its edge, so the two
+	// writers below set the same value.
 	section("EditVmwareNetworkAndWait — routed (name + bandwidth)")
 	edited, err := client.EditVmwareNetworkAndWait(ctx, routedID, &entities.VmwareEditNetworkRequest{
 		Name:          "sdk-ex-routed-renamed",
@@ -172,6 +171,14 @@ func runVmwareNetworkExample(ctx context.Context, client *sdk.CloudClient) {
 	if run.check("EditVmwareNetworkAndWait", err, "name=%q bandwidth=%s Mbps",
 		nameOf(edited), derefInt(bandwidthOf(edited))) {
 		step("edge bandwidth is the network bandwidth — read straight back from the network")
+	}
+
+	section("UpdateVmwareEdgeBandwidthAndWait")
+	rebanded, err := client.UpdateVmwareEdgeBandwidthAndWait(ctx, routedID,
+		&entities.VmwareUpdateEdgeBandwidthRequest{BandwidthMbps: 20})
+	if run.check("UpdateVmwareEdgeBandwidthAndWait", err, "bandwidth=%s Mbps",
+		derefInt(bandwidthOf(rebanded))) {
+		step("the edge endpoint has no read of its own — the network reports the value")
 	}
 
 	// ---------- Edge firewall ----------

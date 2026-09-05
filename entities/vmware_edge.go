@@ -332,18 +332,26 @@ func validateVmwareVPNSharedKey(key string) error {
 }
 
 // ===================== Edge bandwidth =====================
+
+// VmwareUpdateEdgeBandwidthRequest represents a request to set the uplink
+// bandwidth (QoS) of a routed network's edge gateway.
 //
-// PUT /vmware/networks/{id}/edge/bandwidth is the one operation in the SDK's
-// scope that is deliberately not implemented, because it does not work.
+// Edge bandwidth and network bandwidth are the same field, so the value is read
+// back from VmwareNetwork.BandwidthMbps and the allowed range is the one the
+// location's policy publishes; a value outside it is refused with -12041.
 //
-// Measured against live production on 2026-09-04: a request for 30 Mbit/s on a
-// routed network drove its task to state Completed, and the network went on
-// reporting bandwidth_mbps 20. The endpoint reports success and silently
-// persists nothing — the worst case for a caller that treats a completed task as
-// confirmation. It also skips the bandwidth policy check and the NSX-T code path,
-// and the value cannot be read back through it (GET answers 405).
-//
-// Edge bandwidth and network bandwidth are the same field: set it with
-// EditVmwareNetwork (VmwareEditNetworkRequest.BandwidthMbps), which validates the
-// value, stores it and shapes the traffic, and read it from
-// VmwareNetwork.BandwidthMbps.
+// On a platform deployment older than the one that fixed the endpoint, the
+// request completes its task without persisting anything — the network keeps
+// reporting the previous bandwidth. Use EditVmwareNetwork against such a
+// deployment.
+type VmwareUpdateEdgeBandwidthRequest struct {
+	BandwidthMbps int `json:"bandwidth_mbps"`
+}
+
+// Validate checks the update edge bandwidth request.
+func (r *VmwareUpdateEdgeBandwidthRequest) Validate() error {
+	if r.BandwidthMbps <= 0 {
+		return fmt.Errorf("bandwidth_mbps must be greater than 0")
+	}
+	return nil
+}
