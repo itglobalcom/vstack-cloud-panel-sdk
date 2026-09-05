@@ -565,8 +565,8 @@ func printVmwareNetwork(n *entities.VmwareNetwork) {
 	}
 	step("id=%d location=%d type=%-18s name=%q state=%s nics=%d",
 		n.ID, n.LocationID, n.Type, n.Name, n.State, n.NICsCount)
-	step("    address=%s/%s gateway=%s bandwidth=%s Mbps dhcp=%s shared=%s",
-		deref(n.Address), derefInt(n.Mask), deref(n.Gateway),
+	step("    address=%s/%s gateway=%s edge_external_ip=%s bandwidth=%s Mbps dhcp=%s shared=%s",
+		deref(n.Address), derefInt(n.Mask), deref(n.Gateway), deref(n.EdgeExternalIP),
 		derefInt(n.BandwidthMbps), derefBool(n.IsDhcp), derefBool(n.Shared))
 }
 

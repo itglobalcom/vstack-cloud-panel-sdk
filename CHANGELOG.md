@@ -55,6 +55,9 @@ Deprecated).
 - Error helpers and codes: `IsInvalidLocation`, `IsVmwareNoFreePublicNetwork`,
   `IsNetworkInUse`, `APICodeDCLocationDoesNotExist`, `APICodeVmwareNoFreePublicNetwork`,
   `APICodeVmwareInvalidPublicNetworkCapacity`.
+- `entities.VmwareNetwork.EdgeExternalIP` (`edge_external_ip`), the external address of
+  the network's edge gateway. It is what a DNAT rule's `original_ip` is normalized to,
+  and the network read is the only operation of the contract that publishes it.
 - Constants for the VMware enums: server and network states, network types, server and
   edge firewall actions and traffic directions, NAT rule types, VPN encryption types and
   Diffie-Hellman groups, image GPU filter values.

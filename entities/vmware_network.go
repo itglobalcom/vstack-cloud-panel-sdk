@@ -33,18 +33,22 @@ const (
 
 // VmwareNetwork represents a VMware network.
 type VmwareNetwork struct {
-	ID            int     `json:"id"`
-	LocationID    int     `json:"location_id"`
-	Type          string  `json:"type"`
-	Name          string  `json:"name"`
-	Address       *string `json:"address,omitempty"`
-	Mask          *int    `json:"mask,omitempty"`
-	Gateway       *string `json:"gateway,omitempty"`
-	BandwidthMbps *int    `json:"bandwidth_mbps,omitempty"`
-	IsDhcp        *bool   `json:"is_dhcp,omitempty"`
-	Shared        *bool   `json:"shared,omitempty"`
-	State         string  `json:"state"`
-	NICsCount     int     `json:"nics_count"`
+	ID         int     `json:"id"`
+	LocationID int     `json:"location_id"`
+	Type       string  `json:"type"`
+	Name       string  `json:"name"`
+	Address    *string `json:"address,omitempty"`
+	Mask       *int    `json:"mask,omitempty"`
+	Gateway    *string `json:"gateway,omitempty"`
+	// EdgeExternalIP is the external address of the network's edge gateway. It is
+	// absent for a network without an edge, and it is the address a DNAT rule's
+	// original_ip is normalized to (see VmwareEdgeNATRule.OriginalIP).
+	EdgeExternalIP *string `json:"edge_external_ip,omitempty"`
+	BandwidthMbps  *int    `json:"bandwidth_mbps,omitempty"`
+	IsDhcp         *bool   `json:"is_dhcp,omitempty"`
+	Shared         *bool   `json:"shared,omitempty"`
+	State          string  `json:"state"`
+	NICsCount      int     `json:"nics_count"`
 }
 
 // VmwareCreateIsolatedNetworkRequest represents a request to create an isolated
