@@ -148,10 +148,17 @@ An unknown (but positive) location id is rejected by the API with a 400 that
 
 ```go
 locations, err := client.GetVmwareLocationList(ctx)
+if err != nil || len(locations) == 0 {
+	log.Fatalf("cannot read the VMware locations: %v", err)
+}
 images, err := client.GetVmwareImageList(ctx, &locations[0].ID, nil)
 if sdk.IsInvalidLocation(err) {
 	log.Fatalf("unknown VMware location")
 }
+if err != nil {
+	log.Fatalf("cannot read the VMware images: %v", err)
+}
+fmt.Printf("%d image(s) in location %d\n", len(images), locations[0].ID)
 ```
 
 `GetVMwareLocations`, `GetVMwareImages` and `GetVMwareGPUModels` are the older

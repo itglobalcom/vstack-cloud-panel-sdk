@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0]
+## [1.2.0] - 2026-09-05
 
 Adds support for the **VMware Cloud** service and brings the base task model up to
 the unified model the API publishes.
