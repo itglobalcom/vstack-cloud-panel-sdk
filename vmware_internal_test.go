@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -358,5 +359,111 @@ func TestIsVmwareNoFreePublicNetwork(t *testing.T) {
 	}
 	if IsVmwareNoFreePublicNetwork(nil) {
 		t.Error("IsVmwareNoFreePublicNetwork(nil) must be false")
+	}
+}
+
+// The three refusals of the switch are distinct business outcomes: -8149 the
+// server has a GPU, -8154 resume the server first, -8155 the location lacks the
+// capability. Each predicate must match only its own code.
+func TestVmwareNestedHypervisorErrorPredicates(t *testing.T) {
+	// The codes themselves are fixed by the contract, not by the SDK.
+	fixed := map[string]struct {
+		got  int
+		want int
+	}{
+		"APICodeVmwareOperationNotSupportedForGpuServer":      {APICodeVmwareOperationNotSupportedForGpuServer, -8149},
+		"APICodeVmwareServerIsSuspended":                      {APICodeVmwareServerIsSuspended, -8154},
+		"APICodeVmwareNestedHypervisorNotSupportedInLocation": {APICodeVmwareNestedHypervisorNotSupportedInLocation, -8155},
+	}
+	for name, c := range fixed {
+		if c.got != c.want {
+			t.Errorf("%s = %d, want %d", name, c.got, c.want)
+		}
+	}
+
+	predicates := map[string]struct {
+		match func(error) bool
+		code  int
+	}{
+		"IsVmwareOperationNotSupportedForGpuServer":      {IsVmwareOperationNotSupportedForGpuServer, APICodeVmwareOperationNotSupportedForGpuServer},
+		"IsVmwareServerSuspended":                        {IsVmwareServerSuspended, APICodeVmwareServerIsSuspended},
+		"IsVmwareNestedHypervisorNotSupportedInLocation": {IsVmwareNestedHypervisorNotSupportedInLocation, APICodeVmwareNestedHypervisorNotSupportedInLocation},
+	}
+	for name, p := range predicates {
+		for _, code := range []int{
+			APICodeVmwareOperationNotSupportedForGpuServer,
+			APICodeVmwareServerIsSuspended,
+			APICodeVmwareNestedHypervisorNotSupportedInLocation,
+			APICodeConflict,
+		} {
+			err := &RequestError{
+				Status:     "400 Bad Request",
+				StatusCode: http.StatusBadRequest,
+				Codes:      []int{code},
+			}
+			want := code == p.code
+			if got := p.match(err); got != want {
+				t.Errorf("%s(code %d) = %v, want %v", name, code, got, want)
+			}
+		}
+		if p.match(nil) {
+			t.Errorf("%s(nil) must be false", name)
+		}
+	}
+
+	// End to end: the methods wrap errors with %w, so the predicates must keep
+	// working on what a method actually returns.
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"errors":[{"code":-8154,"message":"The operation is not available for a suspended VM"}]}`))
+	}))
+	_, err := client.EnableVmwareServerNestedHypervisorAndWait(context.Background(), 42)
+	if err == nil {
+		t.Fatal("a refused switch must return an error")
+	}
+	if !IsVmwareServerSuspended(err) {
+		t.Errorf("IsVmwareServerSuspended = false for the error the method returns: %v", err)
+	}
+	if IsVmwareOperationNotSupportedForGpuServer(err) {
+		t.Errorf("a suspended-server refusal must not look like the GPU refusal: %v", err)
+	}
+}
+
+// ...AndWait polls the task through the VMware channel (GET /tasks/{id}, state
+// in "is_completed") and then reports the refreshed server.
+func TestEnableVmwareServerNestedHypervisorAndWait(t *testing.T) {
+	var taskPolls, serverReads int32
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost:
+			_, _ = w.Write([]byte(`{"task_id":"vmw77"}`))
+		case strings.HasPrefix(r.URL.Path, "/api/v1/tasks/"):
+			// Not settled on the first poll: the saga power-cycles the guest.
+			state := entities.VmwareTaskStateInProgress
+			if atomic.AddInt32(&taskPolls, 1) >= 2 {
+				state = entities.VmwareTaskStateCompleted
+			}
+			_, _ = w.Write([]byte(`{"task":{"id":"vmw77","is_completed":"` + state + `"}}`))
+		default:
+			atomic.AddInt32(&serverReads, 1)
+			_, _ = w.Write([]byte(`{"server":{"id":42,"state":"active","is_power_on":true,"nested_hypervisor":true}}`))
+		}
+	}))
+
+	server, err := client.EnableVmwareServerNestedHypervisorAndWait(context.Background(), 42)
+	if err != nil {
+		t.Fatalf("EnableVmwareServerNestedHypervisorAndWait: %v", err)
+	}
+	if !server.NestedHypervisor {
+		t.Errorf("the refreshed server must report nested_hypervisor, got %+v", server)
+	}
+	if got := atomic.LoadInt32(&taskPolls); got < 2 {
+		t.Errorf("polled the task %d time(s), expected to keep polling while InProgress", got)
+	}
+	if got := atomic.LoadInt32(&serverReads); got != 1 {
+		t.Errorf("read the server %d time(s), want 1 (after the task)", got)
 	}
 }

@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -69,6 +70,24 @@ func TestVmwareCreateServerRequestValidate(t *testing.T) {
 	r.GPU = &VmwareGPURequest{GPUModelID: 1, VramMB: intPtr(4096), CardCount: intPtr(1)}
 	if err := r.Validate(); err != nil {
 		t.Errorf("complete GPU triple rejected: %v", err)
+	}
+
+	// nested_hypervisor has no local precondition: both values must pass.
+	for _, want := range []bool{true, false} {
+		r := base()
+		r.NestedHypervisor = boolPtr(want)
+		if err := r.Validate(); err != nil {
+			t.Errorf("nested_hypervisor=%v rejected: %v", want, err)
+		}
+	}
+
+	// GPU + nested_hypervisor is a domain rule enforced by the backend
+	// (APICodeVmwareOperationNotSupportedForGpuServer); Validate must not pre-empt it.
+	both := base()
+	both.GPU = &VmwareGPURequest{GPUModelID: 1, VramMB: intPtr(4096), CardCount: intPtr(1)}
+	both.NestedHypervisor = boolPtr(true)
+	if err := both.Validate(); err != nil {
+		t.Errorf("gpu + nested_hypervisor must reach the API and be refused there, got %v", err)
 	}
 }
 
@@ -337,5 +356,77 @@ func TestVmwareTaskTerminalStates(t *testing.T) {
 		if got := task.IsFailed(); got != tc.failedResult {
 			t.Errorf("state %q: IsFailed() = %v, want %v", tc.state, got, tc.failedResult)
 		}
+	}
+}
+
+// The JSON names are fixed by the contract: nested_hypervisor on the server and
+// the order, nested_hypervisor_supported in both location models. They are
+// asserted against literal contract JSON so a rename cannot pass silently.
+func TestVmwareNestedHypervisorContractNames(t *testing.T) {
+	// Server state: present in both list and get responses, so it is a plain
+	// bool rather than a live-only pointer.
+	var enabled VmwareServer
+	if err := json.Unmarshal([]byte(`{"id":42,"state":"active","nested_hypervisor":true}`), &enabled); err != nil {
+		t.Fatalf("unmarshal server: %v", err)
+	}
+	if !enabled.NestedHypervisor {
+		t.Errorf("nested_hypervisor:true must decode into VmwareServer.NestedHypervisor, got %+v", enabled)
+	}
+	// An absent field must read as "off": the API omits null fields.
+	var absent VmwareServer
+	if err := json.Unmarshal([]byte(`{"id":42,"state":"active"}`), &absent); err != nil {
+		t.Fatalf("unmarshal server without the field: %v", err)
+	}
+	if absent.NestedHypervisor {
+		t.Error("an absent nested_hypervisor must decode as false")
+	}
+	if body, err := json.Marshal(&enabled); err != nil {
+		t.Fatalf("marshal server: %v", err)
+	} else if !strings.Contains(string(body), `"nested_hypervisor":true`) {
+		t.Errorf("VmwareServer must serialize the field as nested_hypervisor, got %s", body)
+	}
+
+	// Order field: a pointer, so "omitted" stays distinguishable from an
+	// explicit false.
+	order := VmwareCreateServerRequest{
+		LocationID: 5, Name: "srv", ImageID: 1010,
+		CPUCount: 1, RamMB: 1024, SystemDiskSizeMB: 10240,
+	}
+	body, err := json.Marshal(&order)
+	if err != nil {
+		t.Fatalf("marshal order: %v", err)
+	}
+	if strings.Contains(string(body), "nested_hypervisor") {
+		t.Errorf("an unset NestedHypervisor must be omitted from the order, got %s", body)
+	}
+	order.NestedHypervisor = boolPtr(true)
+	if body, err = json.Marshal(&order); err != nil {
+		t.Fatalf("marshal order: %v", err)
+	} else if !strings.Contains(string(body), `"nested_hypervisor":true`) {
+		t.Errorf("order must serialize the field as nested_hypervisor, got %s", body)
+	}
+	order.NestedHypervisor = boolPtr(false)
+	if body, err = json.Marshal(&order); err != nil {
+		t.Fatalf("marshal order: %v", err)
+	} else if !strings.Contains(string(body), `"nested_hypervisor":false`) {
+		t.Errorf("an explicit false must stay in the order body, got %s", body)
+	}
+
+	// Location capability: two models describe the same catalog
+	// (GetVMwareLocations and GetVmwareLocationList) and must not diverge.
+	catalogJSON := []byte(`{"id":2,"tech_title":"ds-msk","gpu_supported":false,"nested_hypervisor_supported":true}`)
+	var vmwareLocation VMwareLocation
+	if err := json.Unmarshal(catalogJSON, &vmwareLocation); err != nil {
+		t.Fatalf("unmarshal VMwareLocation: %v", err)
+	}
+	if !vmwareLocation.NestedHypervisorSupported {
+		t.Errorf("VMwareLocation must read nested_hypervisor_supported, got %+v", vmwareLocation)
+	}
+	var metainfoLocation VmwareLocation
+	if err := json.Unmarshal(catalogJSON, &metainfoLocation); err != nil {
+		t.Fatalf("unmarshal VmwareLocation: %v", err)
+	}
+	if !metainfoLocation.NestedHypervisorSupported {
+		t.Errorf("VmwareLocation must read nested_hypervisor_supported, got %+v", metainfoLocation)
 	}
 }
