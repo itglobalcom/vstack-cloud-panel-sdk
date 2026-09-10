@@ -34,6 +34,17 @@ const (
 	// APICodeVmwareInvalidPublicNetworkCapacity — "The capacity of public network
 	// is invalid": the requested size is not one the location offers.
 	APICodeVmwareInvalidPublicNetworkCapacity = -12042
+	// APICodeVmwareOperationNotSupportedForGpuServer — "This operation is not
+	// supported for GPU VMs": nested virtualization is mutually exclusive with a
+	// GPU allocation, at order time and when enabling it on an existing server.
+	APICodeVmwareOperationNotSupportedForGpuServer = -8149
+	// APICodeVmwareServerIsSuspended — "The operation is not available for a
+	// suspended VM": the server is suspended and must be resumed first.
+	APICodeVmwareServerIsSuspended = -8154
+	// APICodeVmwareNestedHypervisorNotSupportedInLocation — "The location has no
+	// available VDC that supports nested hypervisor": the capability is reported
+	// up front by VmwareLocation.NestedHypervisorSupported.
+	APICodeVmwareNestedHypervisorNotSupportedInLocation = -8155
 )
 
 // ErrorParam is a single name/value pair from an API error's error_params block.
@@ -156,6 +167,28 @@ func IsInvalidLocation(err error) bool {
 // is not offered.
 func IsVmwareNoFreePublicNetwork(err error) bool {
 	return HasAPICode(err, APICodeVmwareNoFreePublicNetwork)
+}
+
+// IsVmwareOperationNotSupportedForGpuServer reports whether err is the VMware
+// "this operation is not supported for GPU VMs" error (-8149) — nested
+// virtualization cannot be combined with a GPU allocation.
+func IsVmwareOperationNotSupportedForGpuServer(err error) bool {
+	return HasAPICode(err, APICodeVmwareOperationNotSupportedForGpuServer)
+}
+
+// IsVmwareServerSuspended reports whether err is the VMware "the operation is not
+// available for a suspended VM" error (-8154) — the server has to be resumed
+// before the operation can be retried.
+func IsVmwareServerSuspended(err error) bool {
+	return HasAPICode(err, APICodeVmwareServerIsSuspended)
+}
+
+// IsVmwareNestedHypervisorNotSupportedInLocation reports whether err is the
+// VMware "the location has no available VDC that supports nested hypervisor"
+// error (-8155); VmwareLocation.NestedHypervisorSupported reports the capability
+// up front.
+func IsVmwareNestedHypervisorNotSupportedInLocation(err error) bool {
+	return HasAPICode(err, APICodeVmwareNestedHypervisorNotSupportedInLocation)
 }
 
 // HasAPICode reports whether err carries the given API error code.

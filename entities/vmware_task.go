@@ -2,36 +2,26 @@ package entities
 
 import "strconv"
 
-// VMware task states. These are the values returned in VmwareTask.State (wire
-// field "is_completed") and are part of the public enum. The unified Task model
-// reports them in PascalCase.
+// VMware task states. The API has one task state enum for every service, so
+// these are the TaskState* values under their published VMware names.
 const (
-	// VmwareTaskStateNew is a queued task that has not started yet.
-	VmwareTaskStateNew = "New"
-	// VmwareTaskStateInProgress is a task that is currently running.
-	VmwareTaskStateInProgress = "InProgress"
-	// VmwareTaskStateCompleted is a task that finished successfully (terminal).
-	VmwareTaskStateCompleted = "Completed"
-	// VmwareTaskStateFailed is a task that finished with an error (terminal).
-	VmwareTaskStateFailed = "Failed"
-	// VmwareTaskStateCanceled is a task that was canceled (terminal).
-	VmwareTaskStateCanceled = "Canceled"
+	VmwareTaskStateNew        = TaskStateNew
+	VmwareTaskStateInProgress = TaskStateInProgress
+	VmwareTaskStateCompleted  = TaskStateCompleted
+	VmwareTaskStateFailed     = TaskStateFailed
+	VmwareTaskStateCanceled   = TaskStateCanceled
 )
 
-// VMware task resource types — the values of VmwareTaskResource.Type. The
-// unified Task model reports the resources a task touched via Resources rather
-// than dedicated per-resource id fields.
+// VMware task resource types — the values of VmwareTaskResource.Type. VMware
+// tasks reference servers and networks only; the full vocabulary is TaskResource*.
 const (
-	VmwareTaskResourceServer  = "server"
-	VmwareTaskResourceNetwork = "network"
+	VmwareTaskResourceServer  = TaskResourceServer
+	VmwareTaskResourceNetwork = TaskResourceNetwork
 )
 
 // VmwareTaskResource is a reference to a resource a task touched. For VMware the
 // ID is an integer id rendered as a decimal string.
-type VmwareTaskResource struct {
-	Type string `json:"type"`
-	ID   string `json:"id"`
-}
+type VmwareTaskResource = TaskResource
 
 // VmwareTask represents an asynchronous VMware operation.
 //
@@ -57,18 +47,13 @@ func (t *VmwareTask) IsFailed() bool { return t.State == VmwareTaskStateFailed }
 // IsTerminal reports whether the task reached a terminal state (completed,
 // failed or canceled) and will not change further.
 func (t *VmwareTask) IsTerminal() bool {
-	return t.State == VmwareTaskStateCompleted || t.State == VmwareTaskStateFailed || t.State == VmwareTaskStateCanceled
+	return IsTaskStateTerminal(t.State)
 }
 
 // ResourceID returns the id of the first resource of the given type, or an empty
 // string when the task touched no such resource.
 func (t *VmwareTask) ResourceID(resourceType string) string {
-	for _, r := range t.Resources {
-		if r.Type == resourceType {
-			return r.ID
-		}
-	}
-	return ""
+	return taskResourceID(t.Resources, resourceType)
 }
 
 // resourceIDInt returns the numeric id of the first resource of the given type,

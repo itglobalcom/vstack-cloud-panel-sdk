@@ -11,15 +11,10 @@ import (
 )
 
 // VMware service paths (relative to /api/v1/, which is prepended by buildURL).
-// Comments translated to English.
 const (
 	vmwareLocationsURL = "vmware/locations"
 	vmwareImagesURL    = "vmware/images"
 	vmwareGPUModelsURL = "vmware/gpu-models"
-	// The dedicated vmwareTasksBaseURL constant was removed; VMware tasks
-	// are served by the shared tasks resource, so tasksBaseURL from task.go is
-	// reused (task ids are strings of the form "vmw{N}"). The task methods
-	// themselves live in vmware_task.go.
 )
 
 // VMware metainfo response wrappers.
@@ -35,16 +30,12 @@ type (
 	}
 )
 
-// The withQuery helper is a general-purpose helper and now lives in
-// client.go; its definition is removed here and callers use the package-level
-// withQuery directly.
-
 // GetVmwareLocationList returns the VMware locations catalog.
 //
 // Each location carries its own disk_types (VmwareLocation.DiskTypes): the
-// standalone /vmware/disk-types and /vmware/storage-profiles catalogs no longer
-// exist, so this is the only source of the disk-type names and size limits that
-// the create/verify requests accept.
+// standalone /vmware/disk-types and /vmware/storage-profiles catalogs exist only
+// under the AdminV2 prefix, so this is the only source of the disk-type names and
+// size limits that the create/verify requests accept.
 func (c *CloudClient) GetVmwareLocationList(ctx context.Context) ([]*entities.VmwareLocation, error) {
 	req, err := c.newRequest(ctx, http.MethodGet, vmwareLocationsURL, nil)
 	if err != nil {
@@ -91,7 +82,7 @@ func (c *CloudClient) GetVmwareImageList(ctx context.Context, locationID *int, g
 	return resp.Images, nil
 }
 
-// There is no disk-type or storage-profile catalog method: disk types travel inside
+// This family has no disk-type or storage-profile method: disk types travel inside
 // each VmwareLocation (VmwareLocation.DiskTypes), and storage profiles are an
 // internal detail the public API does not expose.
 
