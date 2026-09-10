@@ -21,7 +21,7 @@ import (
 // paths are covered. A platform-level rejection is reported and the run continues;
 // the tally at the end says what passed.
 //
-// Methods covered (43): VerifyVmwareServer, CreateVmwareServer(+AndWait),
+// Methods covered (47): VerifyVmwareServer, CreateVmwareServer(+AndWait),
 // GetVmwareServerList, GetVmwareServer, WaitVmwareServerActive/State/Gone,
 // GetVmwareServerFirewall, UpdateVmwareServerFirewall(+AndWait),
 // GetVmwareServerVolumes, GetVmwareVolume, CreateVmwareVolume(+AndWait),
@@ -32,7 +32,9 @@ import (
 // UpdateVmwareNIC(+AndWait), DeleteVmwareNIC(+AndWait),
 // PowerOn/PowerOff/Shutdown/Reboot/Reset VmwareServer(+AndWait),
 // ChangeVmwareServerConfiguration(+AndWait), RenameVmwareServer,
-// ChangeVmwareServerComputerName(+AndWait), CopyVmwareServer(+AndWait),
+// ChangeVmwareServerComputerName(+AndWait),
+// EnableVmwareServerNestedHypervisor(+AndWait),
+// DisableVmwareServerNestedHypervisor(+AndWait), CopyVmwareServer(+AndWait),
 // RebuildVmwareServer(+AndWait), DeleteVmwareServer(+AndWait).
 func runVmwareServerExample(ctx context.Context, client *sdk.CloudClient) {
 	fmt.Println("=== VMware Cloud server example ===")
@@ -542,6 +544,50 @@ func runVmwareServerExample(ctx context.Context, client *sdk.CloudClient) {
 		run.check("WaitVmwareTaskRef(computer name)", err, "hostname changed")
 	}
 
+	// ---------- Nested hypervisor ----------
+	//
+	// The switch power-cycles a running server; the server is off here, so it
+	// stays off. The raw form runs first and really starts a task; the AndWait
+	// form then repeats the reached state — the idempotent outcome, answered
+	// without a task, so nothing is awaited.
+	section("Nested hypervisor")
+	if !env.Location.NestedHypervisorSupported {
+		step("location %s reports nested_hypervisor_supported=false — the switch is expected to be refused",
+			env.Location.TechTitle)
+	}
+	if t, err := client.EnableVmwareServerNestedHypervisor(ctx, serverID); run.check(
+		"EnableVmwareServerNestedHypervisor", err, "task=%s", t.String()) {
+		_, err = client.WaitVmwareTaskRef(ctx, t)
+		run.check("WaitVmwareTaskRef(nested hypervisor enable)", err, "nested hypervisor enabled")
+
+		nested, err := client.EnableVmwareServerNestedHypervisorAndWait(ctx, serverID)
+		if run.check("EnableVmwareServerNestedHypervisorAndWait", err, "nested_hypervisor=%v power=%v",
+			nestedHypervisorOf(nested), powerOf(nested)) {
+			step("idempotent repeat: already enabled, so no task was started and nothing was awaited")
+		}
+	} else {
+		switch {
+		case sdk.IsVmwareOperationNotSupportedForGpuServer(err):
+			step("refused because the server has a GPU allocation — the two are mutually exclusive")
+		case sdk.IsVmwareServerSuspended(err):
+			step("refused because the server is suspended — resume it and retry")
+		case sdk.IsVmwareNestedHypervisorNotSupportedInLocation(err):
+			step("refused because no VDC available here supports nested hypervisor")
+		}
+	}
+
+	if t, err := client.DisableVmwareServerNestedHypervisor(ctx, serverID); run.check(
+		"DisableVmwareServerNestedHypervisor", err, "task=%s", t.String()) {
+		_, err = client.WaitVmwareTaskRef(ctx, t)
+		run.check("WaitVmwareTaskRef(nested hypervisor disable)", err, "nested hypervisor disabled")
+
+		nested, err := client.DisableVmwareServerNestedHypervisorAndWait(ctx, serverID)
+		if run.check("DisableVmwareServerNestedHypervisorAndWait", err, "nested_hypervisor=%v power=%v",
+			nestedHypervisorOf(nested), powerOf(nested)) {
+			step("idempotent repeat: already disabled, so no task was started and nothing was awaited")
+		}
+	}
+
 	// ---------- Copy and rebuild (the long ones) ----------
 	if vmwareExampleSkipLong() {
 		for _, m := range []string{
@@ -654,8 +700,8 @@ func printVmwareServer(s *entities.VmwareServer) {
 		s.ID, s.ProjectID, s.LocationID, s.Name, deref(s.ComputerName))
 	step("state=%s power=%v cpu=%d ram=%d MB system_disk=%d MB type=%s image=%d created=%s",
 		s.State, s.IsPowerOn, s.CPU, s.RamMB, s.SystemDiskMB, deref(s.SystemDiskType), s.ImageID, s.Created)
-	step("vm_tools_installed=%s gpu=%s nics=%d",
-		derefBool(s.VmToolsInstalled), formatGPU(s.GPU), len(s.NICs))
+	step("vm_tools_installed=%s gpu=%s nested_hypervisor=%v nics=%d",
+		derefBool(s.VmToolsInstalled), formatGPU(s.GPU), s.NestedHypervisor, len(s.NICs))
 }
 
 // formatGPU renders the optional GPU allocation.
@@ -731,6 +777,13 @@ func idOf(s *entities.VmwareServer) int {
 		return 0
 	}
 	return s.ID
+}
+
+func nestedHypervisorOf(s *entities.VmwareServer) any {
+	if s == nil {
+		return "<nil>"
+	}
+	return s.NestedHypervisor
 }
 
 func computerNameOf(s *entities.VmwareServer) string {

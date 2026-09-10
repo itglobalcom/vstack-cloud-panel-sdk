@@ -44,8 +44,12 @@ type VmwareServer struct {
 	IsPowerOn      bool    `json:"is_power_on"`
 	// VmToolsInstalled is live-only: it is populated only by Get-by-id and is
 	// absent from list responses.
-	VmToolsInstalled *bool       `json:"vm_tools_installed,omitempty"`
-	GPU              *VmwareGPU  `json:"gpu,omitempty"`
+	VmToolsInstalled *bool      `json:"vm_tools_installed,omitempty"`
+	GPU              *VmwareGPU `json:"gpu,omitempty"`
+	// NestedHypervisor reports whether nested virtualization is enabled on the
+	// server. Mutually exclusive with a GPU allocation; switched with
+	// EnableVmwareServerNestedHypervisor / DisableVmwareServerNestedHypervisor.
+	NestedHypervisor bool        `json:"nested_hypervisor"`
 	NICs             []VmwareNIC `json:"nics"`
 	Created          string      `json:"created"`
 }
@@ -94,6 +98,10 @@ type VmwareCreateServerRequest struct {
 	SSHKeys              []int             `json:"ssh_keys,omitempty"`
 	NeedSysprep          *bool             `json:"need_sysprep,omitempty"`
 	GPU                  *VmwareGPURequest `json:"gpu,omitempty"`
+	// NestedHypervisor orders the server with nested virtualization enabled;
+	// omitted means "off". It cannot be combined with GPU and requires a location
+	// that reports NestedHypervisorSupported.
+	NestedHypervisor *bool `json:"nested_hypervisor,omitempty"`
 }
 
 // Validate checks the create server request.

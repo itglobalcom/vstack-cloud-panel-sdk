@@ -21,8 +21,8 @@ func runVMwareExample(ctx context.Context, client *sdk.CloudClient) {
 	}
 	fmt.Printf("Available locations: %d\n", len(locations))
 	for i, loc := range locations {
-		fmt.Printf("%d. Location %d: %s (GPU supported: %v)\n",
-			i+1, loc.ID, loc.TechTitle, loc.GPUSupported)
+		fmt.Printf("%d. Location %d: %s (GPU supported: %v, nested hypervisor supported: %v)\n",
+			i+1, loc.ID, loc.TechTitle, loc.GPUSupported, loc.NestedHypervisorSupported)
 	}
 
 	if len(locations) == 0 {

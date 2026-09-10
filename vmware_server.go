@@ -484,6 +484,78 @@ func (c *CloudClient) ResetVmwareServerAndWait(ctx context.Context, serverID int
 	return c.vmwarePowerAndWait(ctx, serverID, "reset")
 }
 
+// ===================== Nested hypervisor =====================
+
+// vmwareNestedHypervisor switches nested virtualization on a server and returns
+// the background task, or (nil, nil) when the server is already in the requested
+// state.
+func (c *CloudClient) vmwareNestedHypervisor(ctx context.Context, serverID int, action string) (*VmwareTaskID, error) {
+	if serverID <= 0 {
+		return nil, fmt.Errorf("server ID must be greater than 0")
+	}
+	req, err := c.newRequest(ctx, http.MethodPost, buildVmwareServerPath(serverID, "nested-hypervisor", action), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s nested hypervisor request for vmware server %d: %w", action, serverID, err)
+	}
+	var task VmwareTaskID
+	if err := c.doJSON(req, &task); err != nil {
+		return nil, fmt.Errorf("failed to %s nested hypervisor on vmware server %d: %w", action, serverID, err)
+	}
+	// 200 with "task_id": null means the server is already in the requested
+	// state; report (nil, nil) so callers do not await an empty task.
+	if task.ID == "" {
+		return nil, nil
+	}
+	return &task, nil
+}
+
+// vmwareNestedHypervisorAndWait switches nested virtualization, waits for the
+// task if the API started one and returns the refreshed server.
+func (c *CloudClient) vmwareNestedHypervisorAndWait(ctx context.Context, serverID int, action string) (*entities.VmwareServer, error) {
+	task, err := c.vmwareNestedHypervisor(ctx, serverID, action)
+	if err != nil {
+		return nil, err
+	}
+	// A nil task (idempotent outcome) is "nothing to await" for awaitVmwareTask.
+	if err := c.awaitVmwareTask(ctx, task); err != nil {
+		return nil, err
+	}
+	return c.GetVmwareServer(ctx, serverID)
+}
+
+// EnableVmwareServerNestedHypervisor enables nested virtualization on a server
+// and returns the background task to await, or (nil, nil) when it is already
+// enabled.
+//
+// The backend saga power-cycles a running server; a server that is off stays
+// off. Rejected for a GPU server, a suspended server and a location without the
+// capability — see IsVmwareOperationNotSupportedForGpuServer,
+// IsVmwareServerSuspended and IsVmwareNestedHypervisorNotSupportedInLocation.
+func (c *CloudClient) EnableVmwareServerNestedHypervisor(ctx context.Context, serverID int) (*VmwareTaskID, error) {
+	return c.vmwareNestedHypervisor(ctx, serverID, "enable")
+}
+
+// EnableVmwareServerNestedHypervisorAndWait enables nested virtualization, waits
+// for the task and returns the refreshed server. When it was already enabled
+// there is no task to wait for and the current server state is returned.
+func (c *CloudClient) EnableVmwareServerNestedHypervisorAndWait(ctx context.Context, serverID int) (*entities.VmwareServer, error) {
+	return c.vmwareNestedHypervisorAndWait(ctx, serverID, "enable")
+}
+
+// DisableVmwareServerNestedHypervisor disables nested virtualization on a server
+// and returns the background task to await, or (nil, nil) when it is already
+// disabled. Like enabling, it power-cycles a running server.
+func (c *CloudClient) DisableVmwareServerNestedHypervisor(ctx context.Context, serverID int) (*VmwareTaskID, error) {
+	return c.vmwareNestedHypervisor(ctx, serverID, "disable")
+}
+
+// DisableVmwareServerNestedHypervisorAndWait disables nested virtualization,
+// waits for the task and returns the refreshed server. When it was already
+// disabled there is no task to wait for and the current server state is returned.
+func (c *CloudClient) DisableVmwareServerNestedHypervisorAndWait(ctx context.Context, serverID int) (*entities.VmwareServer, error) {
+	return c.vmwareNestedHypervisorAndWait(ctx, serverID, "disable")
+}
+
 // ===================== Volumes =====================
 
 // GetVmwareServerVolumes returns the additional data volumes of a server. A

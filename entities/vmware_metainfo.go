@@ -15,6 +15,10 @@ type VmwareLocation struct {
 	ID           int    `json:"id"`
 	TechTitle    string `json:"tech_title"`
 	GPUSupported bool   `json:"gpu_supported"`
+	// NestedHypervisorSupported reports whether the location has a VDC available
+	// to the caller that supports nested virtualization; derived from the caller's
+	// VDCs, so two projects can see different values for the same location.
+	NestedHypervisorSupported bool `json:"nested_hypervisor_supported"`
 	// DiskTypes are the disk types offered in this location; there is no standalone
 	// disk-type catalog. Limits are in MB, matching the create/verify requests
 	// (system_disk_size_mb, size_mb).

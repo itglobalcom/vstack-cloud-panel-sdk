@@ -4,11 +4,53 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0] - Unreleased
+## [Unreleased]
+
+### Added
+
+- **Nested hypervisor on a VMware Cloud server.** `nested_hypervisor` on
+  `VmwareServer` (list and get) and on `VmwareCreateServerRequest` (the type
+  `VerifyVmwareServer` takes as well), plus `EnableVmwareServerNestedHypervisor` and
+  `DisableVmwareServerNestedHypervisor` with their `...AndWait` variants. The switch
+  is applied by a backend saga that power-cycles a running server; a server that is
+  already off stays off. Switching to the state the server is already in is answered
+  with no task at all: the raw methods return `(nil, nil)` and the `...AndWait` forms
+  return the current server without waiting for anything.
+- `NestedHypervisorSupported` on both location models — `VmwareLocation`
+  (`GetVmwareLocationList`) and `VMwareLocation` (`GetVMwareLocations`). The capability
+  belongs to a VDC, so the catalog reports it per location as "some VDC available to
+  this project supports it", and two projects can see different values for the same
+  location.
+- Error codes and helpers for the refusals ordering and switching can hit:
+  `APICodeVmwareOperationNotSupportedForGpuServer` (-8149 — nested hypervisor and a
+  GPU allocation are mutually exclusive), `APICodeVmwareServerIsSuspended` (-8154) and
+  `APICodeVmwareNestedHypervisorNotSupportedInLocation` (-8155), with the matching
+  `IsVmwareOperationNotSupportedForGpuServer`, `IsVmwareServerSuspended` and
+  `IsVmwareNestedHypervisorNotSupportedInLocation`.
+
+## [1.1.3] - 2026-08-20
+
+### Fixed
+
+- **`v1.1.2` does not build; this release is the fix.** Four error declarations were
+  lost in a merge before `v1.1.2` was tagged while their callers stayed: on that tag
+  `go build ./...` fails with `undefined: sdk.IsVmwareLocationNotFound`,
+  `undefined: sdk.IsNetworkInUse` and `undefined: sdk.IsVmwareNoFreePublicNetwork`
+  in `examples/`. Restored here as `IsNetworkInUse`, `IsVmwareNoFreePublicNetwork`,
+  `APICodeVmwareNoFreePublicNetwork` (-12043) and
+  `APICodeVmwareInvalidPublicNetworkCapacity` (-12042); the dangling
+  `IsVmwareLocationNotFound` reference was pointed at the helper that does exist,
+  `IsInvalidLocation`. Pin `v1.1.3` or later — `v1.1.2` is unusable.
+
+## [1.1.2] - 2026-08-19
 
 Adds support for the **VMware Cloud** service. This is new surface only — no
-previously published type or method was removed or renamed, so existing code keeps
-compiling.
+previously published type or method was removed or renamed.
+
+> **Do not pin this tag.** `go build ./...` fails on it; use `v1.1.3`. The version
+> number is also irregular for the content: a whole new service arrived in a patch
+> bump from `1.1.0`, and `1.1.1` was never released. Both are recorded rather than
+> rewritten — the tag is published.
 
 ### Added
 
@@ -49,9 +91,10 @@ compiling.
 - `RequestError.ErrorParams`, the parsed `error_params` block the API attaches to an
   error to point at the field or list element that failed. This is the only way to tell
   which element of a batch operation was rejected.
-- Error helpers and codes: `IsInvalidLocation`, `IsVmwareNoFreePublicNetwork`,
-  `IsNetworkInUse`, `APICodeDCLocationDoesNotExist`, `APICodeVmwareNoFreePublicNetwork`,
-  `APICodeVmwareInvalidPublicNetworkCapacity`.
+- Error helpers and codes: `IsInvalidLocation` and `APICodeDCLocationDoesNotExist`.
+  (`IsNetworkInUse`, `IsVmwareNoFreePublicNetwork` and the two public-network capacity
+  codes are documented under `[1.1.3]`: they are absent from this tag's tree, which is
+  what breaks its build.)
 - Constants for the VMware enums: server and network states, network types, server and
   edge firewall actions and traffic directions, NAT rule types, VPN encryption types and
   Diffie-Hellman groups, image GPU filter values.
@@ -103,6 +146,25 @@ such as a Terraform provider has to account for:
 - **The API serializes changes per object.** A second mutation on the same server or
   network while the first is still running is rejected with `APICodeConflict` (-4000),
   which the client retries automatically.
+
+## [1.1.0] - 2026-08-14
+
+### Added
+
+- `WaitGatewayActive`, `WaitGatewayActiveWithTimeout` and `WaitGatewayTaskCompletion`:
+  a gateway stays busy for a while after its task has completed, so the task alone is
+  not a safe point to start the next change from.
+- `ErrTaskFailed` and `IsTaskFailed` — a backend task that finished in a failed state,
+  told apart from a transport error.
+
+### Changed
+
+- A failed rule-set task is retried once, and the rule-set payload is validated
+  before the request goes out.
+- Every gateway `...AndWait` method now waits for the gateway to become active, not
+  just for its task to complete. Documented after the fact: this changelog was
+  introduced later, and the release carried no entry — the entry was reconstructed
+  from `v1.0.1..v1.1.0` (`a5c4f9a`).
 
 ## [1.0.1]
 

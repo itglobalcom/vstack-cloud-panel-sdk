@@ -57,7 +57,13 @@ Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сей
 
 ## Тесты
 
-- Только stdlib `testing`. Нет testify, httptest, моков, golden-файлов — так и оставить.
+- Только stdlib `testing`. Нет testify, моков, golden-файлов — так и оставить.
+- Сетевой сценарий проверяется на стабе `net/http/httptest` через готовый хелпер
+  `newTestClient(t, handler)` (`gateway_internal_test.go:17`): он направляет клиент на стаб,
+  выключает ретраи (`WithMaxRetries(0)`) и сжимает ожидания опроса до
+  `WithPollingInterval(5ms)` + `WithPollingTimeout(2s)` — именно это делает тесты
+  `...AndWait`-методов быстрыми и детерминированными. Свой `httptest.NewServer`
+  в доменных тестах не поднимать.
 - Файл `<домен>_internal_test.go`, `package sdk` (тестируются и приватные функции).
 - Паттерны: map-driven `cases := map[string]string{…}` для чистых функций; `t.Run` для
   сценариев; разбор контракта — unmarshal реального JSON-литерала в `ListXResponse`
@@ -65,6 +71,23 @@ Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сей
 - Формат сообщений: `t.Errorf("f(%q) = %q, want %q", …)`.
 - Обязательное покрытие change-slice: билдер пути, валидация аргументов, разбор ответа
   (включая ответ без коллекции — API опускает пустые поля), новый предикат ошибки.
+
+## CHANGELOG
+
+Конвенция (автоматической проверки нет: `.github/workflows/ci.yml` — единственный
+workflow, гоняет `gofmt`/`go vet`/`go build`/`go test -race` и `CHANGELOG.md` не смотрит;
+релизной джобы и правил в `CONTRIBUTING.md` тоже нет — соблюдение на авторе слайса).
+
+`CHANGELOG.md` — часть каждого change-slice, а не работа релиза: запись идёт
+в `## [Unreleased]` (Keep a Changelog: `Added`/`Changed`/`Fixed`) и описывает
+поведение контракта для потребителя SDK, а не список файлов. Номер версии слайс
+не назначает: заголовок `## [X.Y.Z] - <дата тега>` закрывается только по факту
+выпущенного тега и только тем составом, который в дереве этого тега действительно
+есть. Отсюда два признака расхождения, оба означают «версия придумана заранее»:
+заголовок с номером, которого нет среди `git tag`, и датированный заголовок,
+перечисляющий символы, отсутствующие в дереве своего тега (`git show <tag>:errors.go`).
+Форма `## [X.Y.Z] - Unreleased` не используется вовсе — до тега есть только
+`[Unreleased]`.
 
 ## Гейты
 
