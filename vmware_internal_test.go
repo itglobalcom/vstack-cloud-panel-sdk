@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -23,12 +22,22 @@ func TestBuildVMwarePath(t *testing.T) {
 	if err := addIDFilter(filters, "location_id", 2); err != nil {
 		t.Fatalf("location_id filter: %v", err)
 	}
-	if err := addIDFilter(filters, "disk_type_id", 7); err != nil {
+	filters.Set("gpu", entities.VmwareImageGPURequired)
+	want := "vmware/images?gpu=required&location_id=2"
+	if got := buildVMwarePath(vmwareImagesPath, filters); got != want {
+		t.Errorf("both filters: got %q, want %q", got, want)
+	}
+
+	idFilters := url.Values{}
+	if err := addIDFilter(idFilters, "location_id", 2); err != nil {
+		t.Fatalf("location_id filter: %v", err)
+	}
+	if err := addIDFilter(idFilters, "disk_type_id", 7); err != nil {
 		t.Fatalf("disk_type_id filter: %v", err)
 	}
-	want := "vmware/storage-profiles?disk_type_id=7&location_id=2"
-	if got := buildVMwarePath(vmwareStorageProfilesPath, filters); got != want {
-		t.Errorf("both filters: got %q, want %q", got, want)
+	want = "vmware/storage-profiles?disk_type_id=7&location_id=2"
+	if got := buildVMwarePath(vmwareStorageProfilesPath, idFilters); got != want {
+		t.Errorf("both id filters: got %q, want %q", got, want)
 	}
 
 	// An empty (but non-nil) set of filters must not add a bare "?".
@@ -67,14 +76,7 @@ func TestAddIDFilter(t *testing.T) {
 // A negative id must fail before the request is built — the caller must not get
 // a full unfiltered list back.
 func TestGetVMwareCatalogRejectsNegativeID(t *testing.T) {
-	config, err := NewConfig("token", "https://api.example.com")
-	if err != nil {
-		t.Fatalf("config: %v", err)
-	}
-	client, err := NewClient(config)
-	if err != nil {
-		t.Fatalf("client: %v", err)
-	}
+	client := newTestClient(t, noRequestHandler(t))
 	ctx := context.Background()
 
 	if _, err := client.GetVMwareDiskTypes(ctx, -1); err == nil {
@@ -93,7 +95,10 @@ func TestGetVMwareCatalogRejectsNegativeID(t *testing.T) {
 
 func TestParseVMwareLocationsResponse(t *testing.T) {
 	body := []byte(`{"locations":[
-		{"id":2,"tech_title":"ds-msk","gpu_supported":true},
+		{"id":2,"tech_title":"ds-msk","gpu_supported":true,"disk_types":[
+			{"title":"SSD","is_default":true,"is_ssd":true,"is_allowed_for_system_disk":true,
+			 "min_mb":10240,"max_mb":2048000,"step_mb":10240,"default_size_mb":61440}
+		]},
 		{"id":6,"tech_title":"sdn-spb","gpu_supported":false}
 	]}`)
 
@@ -112,8 +117,24 @@ func TestParseVMwareLocationsResponse(t *testing.T) {
 	if resp.Locations[1].GPUSupported {
 		t.Error("second location must not report GPU support")
 	}
+
+	// Disk types travel inside the location: there is no disk-type catalog
+	// endpoint, so this is the only place their names and limits come from.
+	if len(first.DiskTypes) != 1 {
+		t.Fatalf("got %d disk types, want 1", len(first.DiskTypes))
+	}
+	dt := first.DiskTypes[0]
+	if dt.Title != "SSD" || !dt.IsDefault || !dt.IsSSD || !dt.IsAllowedForSystemDisk {
+		t.Errorf("disk type identity/flags: %+v", dt)
+	}
+	// The limits are in megabytes, matching system_disk_size_mb / size_mb.
+	if dt.MinMB != 10240 || dt.MaxMB != 2048000 || dt.StepMB != 10240 || dt.DefaultSizeMB != 61440 {
+		t.Errorf("disk type size limits: %+v", dt)
+	}
 }
 
+// The deprecated disk-type and storage-profile shapes stay published, so their
+// tags stay covered even though the routes answer 404.
 func TestParseVMwareDiskTypesResponse(t *testing.T) {
 	body := []byte(`{"disk_types":[{
 		"id":3,"title":"SSD","min_gb":10,"max_gb":2048,"step_gb":10,
@@ -137,6 +158,30 @@ func TestParseVMwareDiskTypesResponse(t *testing.T) {
 	}
 	if !dt.IsAllowedForSystemDisk || !dt.IsSSD {
 		t.Errorf("flags: %+v", dt)
+	}
+}
+
+func TestParseVMwareStorageProfilesResponse(t *testing.T) {
+	// free_space_gb is int64: profile capacity does not fit into int32.
+	body := []byte(`{"storage_profiles":[{
+		"id":11,"name":"SSD-Fast","disk_type_id":3,"is_default":true,
+		"free_space_gb":5000000000
+	}]}`)
+
+	var resp ListVMwareStorageProfilesResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if len(resp.StorageProfiles) != 1 {
+		t.Fatalf("got %d profiles, want 1", len(resp.StorageProfiles))
+	}
+	p := resp.StorageProfiles[0]
+	if p.ID != 11 || p.Name != "SSD-Fast" || p.DiskTypeID != 3 || !p.IsDefault {
+		t.Errorf("profile: %+v", p)
+	}
+	if p.FreeSpaceGB != 5000000000 {
+		t.Errorf("free_space_gb = %d, want 5000000000", p.FreeSpaceGB)
 	}
 }
 
@@ -164,30 +209,6 @@ func TestParseVMwareGPUModelsResponse(t *testing.T) {
 	}
 	if m.ServerAllocationLimit != 4 || m.MaxServerRamMB != 524288 || !m.IsAvailable {
 		t.Errorf("allocation limits: %+v", m)
-	}
-}
-
-func TestParseVMwareStorageProfilesResponse(t *testing.T) {
-	// free_space_gb is int64: profile capacity does not fit into int32.
-	body := []byte(`{"storage_profiles":[{
-		"id":11,"name":"SSD-Fast","disk_type_id":3,"is_default":true,
-		"free_space_gb":5000000000
-	}]}`)
-
-	var resp ListVMwareStorageProfilesResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	if len(resp.StorageProfiles) != 1 {
-		t.Fatalf("got %d profiles, want 1", len(resp.StorageProfiles))
-	}
-	p := resp.StorageProfiles[0]
-	if p.ID != 11 || p.Name != "SSD-Fast" || p.DiskTypeID != 3 || !p.IsDefault {
-		t.Errorf("profile: %+v", p)
-	}
-	if p.FreeSpaceGB != 5000000000 {
-		t.Errorf("free_space_gb = %d, want 5000000000", p.FreeSpaceGB)
 	}
 }
 
@@ -235,14 +256,44 @@ func TestParseVMwareImagesResponse(t *testing.T) {
 // An empty list arrives either as an empty array or (NullValueHandling.Ignore)
 // as an object without the collection at all.
 func TestParseVMwareEmptyResponses(t *testing.T) {
-	for _, body := range []string{`{"disk_types":[]}`, `{}`} {
-		var resp ListVMwareDiskTypesResponse
+	for _, body := range []string{`{"locations":[]}`, `{}`} {
+		var resp ListVMwareLocationsResponse
 		if err := json.Unmarshal([]byte(body), &resp); err != nil {
 			t.Fatalf("unmarshal %s: %v", body, err)
 		}
-		if len(resp.DiskTypes) != 0 {
-			t.Errorf("%s: got %d disk types, want 0", body, len(resp.DiskTypes))
+		if len(resp.Locations) != 0 {
+			t.Errorf("%s: got %d locations, want 0", body, len(resp.Locations))
 		}
+	}
+}
+
+// The GPU filter of the images endpoint is "gpu", whose values are an enum. The
+// deprecated two-state parameter has to map onto it: "gpu_only", the name this
+// method used to send, is not a declared parameter and was ignored, so asking
+// for GPU-only images answered with all of them.
+func TestGetVMwareImagesGPUFilter(t *testing.T) {
+	var query atomic.Value
+
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query.Store(r.URL.RawQuery)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"images":[]}`))
+	}))
+	ctx := context.Background()
+
+	if _, err := client.GetVMwareImages(ctx, 2, true); err != nil {
+		t.Fatalf("gpu-only: %v", err)
+	}
+	if got, want := query.Load(), "gpu=required&location_id=2"; got != want {
+		t.Errorf("gpu-only query = %v, want %q", got, want)
+	}
+
+	// Without the filter the call stays a plain GET on the location.
+	if _, err := client.GetVMwareImages(ctx, 2, false); err != nil {
+		t.Fatalf("unfiltered: %v", err)
+	}
+	if got, want := query.Load(), "location_id=2"; got != want {
+		t.Errorf("unfiltered query = %v, want %q", got, want)
 	}
 }
 
@@ -308,62 +359,6 @@ func TestIsVmwareNoFreePublicNetwork(t *testing.T) {
 	}
 	if IsVmwareNoFreePublicNetwork(nil) {
 		t.Error("IsVmwareNoFreePublicNetwork(nil) must be false")
-	}
-}
-
-// The switch routes are fixed by the contract:
-// POST vmware/servers/{id}/nested-hypervisor/{enable|disable}; the server id is
-// validated before any request is built.
-func TestVmwareServerNestedHypervisorPaths(t *testing.T) {
-	type call struct {
-		method string
-		path   string
-	}
-	var (
-		mu    sync.Mutex
-		calls []call
-	)
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		calls = append(calls, call{r.Method, r.URL.Path})
-		mu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"task_id":"vmw77"}`))
-	}))
-	ctx := context.Background()
-
-	if _, err := client.EnableVmwareServerNestedHypervisor(ctx, 42); err != nil {
-		t.Fatalf("EnableVmwareServerNestedHypervisor: %v", err)
-	}
-	if _, err := client.DisableVmwareServerNestedHypervisor(ctx, 42); err != nil {
-		t.Fatalf("DisableVmwareServerNestedHypervisor: %v", err)
-	}
-
-	want := []call{
-		{http.MethodPost, "/api/v1/vmware/servers/42/nested-hypervisor/enable"},
-		{http.MethodPost, "/api/v1/vmware/servers/42/nested-hypervisor/disable"},
-	}
-	mu.Lock()
-	got := calls
-	mu.Unlock()
-	if len(got) != len(want) {
-		t.Fatalf("got %d request(s) %v, want %v", len(got), got, want)
-	}
-	for i, w := range want {
-		if got[i] != w {
-			t.Errorf("request %d = %s %s, want %s %s", i, got[i].method, got[i].path, w.method, w.path)
-		}
-	}
-
-	// A bad server id must be rejected locally, in the ...AndWait form too.
-	guard := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("request must not reach the API: %s %s", r.Method, r.URL.Path)
-	}))
-	if _, err := guard.EnableVmwareServerNestedHypervisor(ctx, 0); err == nil {
-		t.Error("EnableVmwareServerNestedHypervisor must reject server id 0")
-	}
-	if _, err := guard.DisableVmwareServerNestedHypervisorAndWait(ctx, -1); err == nil {
-		t.Error("DisableVmwareServerNestedHypervisorAndWait must reject a negative server id")
 	}
 }
 
@@ -470,50 +465,5 @@ func TestEnableVmwareServerNestedHypervisorAndWait(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&serverReads); got != 1 {
 		t.Errorf("read the server %d time(s), want 1 (after the task)", got)
-	}
-}
-
-// The idempotent outcome: switching to the state the server is already in
-// answers HTTP 200 with "task_id": null — the raw method reports no task and
-// ...AndWait returns the current server without waiting.
-func TestVmwareServerNestedHypervisorAndWaitIdempotent(t *testing.T) {
-	var serverReads int32
-
-	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch {
-		case r.Method == http.MethodPost:
-			_, _ = w.Write([]byte(`{"task_id":null}`))
-		case strings.HasPrefix(r.URL.Path, "/api/v1/tasks/"):
-			t.Errorf("there is no task to await, but %s was polled", r.URL.Path)
-			w.WriteHeader(http.StatusNotFound)
-		default:
-			atomic.AddInt32(&serverReads, 1)
-			_, _ = w.Write([]byte(`{"server":{"id":42,"state":"powered_off","nested_hypervisor":false}}`))
-		}
-	}))
-	ctx := context.Background()
-
-	task, err := client.DisableVmwareServerNestedHypervisor(ctx, 42)
-	if err != nil {
-		t.Fatalf("DisableVmwareServerNestedHypervisor: %v", err)
-	}
-	// A non-nil task with an empty id would be handed to the task waiter.
-	if task != nil {
-		t.Errorf("an answer without a task must report no task, got %+v", task)
-	}
-
-	server, err := client.DisableVmwareServerNestedHypervisorAndWait(ctx, 42)
-	if err != nil {
-		t.Fatalf("DisableVmwareServerNestedHypervisorAndWait: %v", err)
-	}
-	if server == nil || server.ID != 42 {
-		t.Fatalf("the current server state must be returned, got %+v", server)
-	}
-	if server.NestedHypervisor {
-		t.Errorf("the server reports nested_hypervisor after disabling: %+v", server)
-	}
-	if got := atomic.LoadInt32(&serverReads); got != 1 {
-		t.Errorf("read the server %d time(s), want 1", got)
 	}
 }

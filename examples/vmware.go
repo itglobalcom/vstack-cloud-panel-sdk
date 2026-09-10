@@ -8,10 +8,16 @@ import (
 	sdk "github.com/itglobalcom/vstack-cloud-panel-sdk"
 )
 
-// runVMwareExample reads the VMware catalog (api/v1/vmware). Every call is
-// read-only, so the example is safe to run against a live project.
+// runVMwareExample reads the VMware catalog through the superseded GetVMware*
+// methods. Every call is read-only, so the example is safe to run against a live
+// project.
+//
+// It exists to keep the deprecated family exercised. New code should use the
+// vmware_meta example instead, which drives GetVmwareLocationList,
+// GetVmwareImageList and GetVmwareGPUModelList — the same three endpoints with
+// the full response and a three-state GPU filter.
 func runVMwareExample(ctx context.Context, client *sdk.CloudClient) {
-	fmt.Println("=== VMware Catalog Example ===")
+	fmt.Println("=== VMware catalog example (deprecated GetVMware* family) ===")
 
 	// Get the VMware locations available to the project
 	fmt.Println("\n=== Getting VMware locations ===")
@@ -21,8 +27,16 @@ func runVMwareExample(ctx context.Context, client *sdk.CloudClient) {
 	}
 	fmt.Printf("Available locations: %d\n", len(locations))
 	for i, loc := range locations {
-		fmt.Printf("%d. Location %d: %s (GPU supported: %v, nested hypervisor supported: %v)\n",
+		fmt.Printf("%d. Location %d: %s (GPU supported: %v, nested hypervisor: %v)\n",
 			i+1, loc.ID, loc.TechTitle, loc.GPUSupported, loc.NestedHypervisorSupported)
+		// Disk types are published inside the location, not as a standalone
+		// catalog: there is no api/v1/vmware/disk-types endpoint. Title is the
+		// value the create/verify requests take, and the limits are in MB.
+		for _, dt := range loc.DiskTypes {
+			fmt.Printf("     - %s: %d - %d MB, step %d, default %d MB, SSD: %v, system disk: %v\n",
+				dt.Title, dt.MinMB, dt.MaxMB, dt.StepMB, dt.DefaultSizeMB,
+				dt.IsSSD, dt.IsAllowedForSystemDisk)
+		}
 	}
 
 	if len(locations) == 0 {
@@ -33,38 +47,14 @@ func runVMwareExample(ctx context.Context, client *sdk.CloudClient) {
 	// The catalog filters are optional: 0 means "every location".
 	locationID := locations[0].ID
 
-	// Get the disk types allowed in the location
-	fmt.Printf("\n=== Getting disk types of location %d ===\n", locationID)
-	diskTypes, err := client.GetVMwareDiskTypes(ctx, locationID)
+	// Get the GPU models available to the partner
+	fmt.Printf("\n=== Getting GPU models of location %d ===\n", locationID)
+	gpuModels, err := client.GetVMwareGPUModels(ctx, locationID)
 	if err != nil {
 		// An unknown location_id is answered with 400, not an empty list.
 		if sdk.IsInvalidLocation(err) {
 			log.Fatalf("Unknown VMware location %d", locationID)
 		}
-		log.Fatalf("Failed to get VMware disk types: %v", err)
-	}
-	fmt.Printf("Disk types: %d\n", len(diskTypes))
-	for _, dt := range diskTypes {
-		fmt.Printf("  - %s (id %d): %d - %d GB, step %d, SSD: %v, system disk: %v\n",
-			dt.Title, dt.ID, dt.MinGB, dt.MaxGB, dt.StepGB, dt.IsSSD, dt.IsAllowedForSystemDisk)
-	}
-
-	// Get the storage profiles of the location
-	fmt.Printf("\n=== Getting storage profiles of location %d ===\n", locationID)
-	profiles, err := client.GetVMwareStorageProfiles(ctx, locationID, 0)
-	if err != nil {
-		log.Fatalf("Failed to get VMware storage profiles: %v", err)
-	}
-	fmt.Printf("Storage profiles: %d\n", len(profiles))
-	for _, p := range profiles {
-		fmt.Printf("  - %s (id %d): disk type %d, default: %v, free %d GB\n",
-			p.Name, p.ID, p.DiskTypeID, p.IsDefault, p.FreeSpaceGB)
-	}
-
-	// Get the GPU models available to the partner
-	fmt.Printf("\n=== Getting GPU models of location %d ===\n", locationID)
-	gpuModels, err := client.GetVMwareGPUModels(ctx, locationID)
-	if err != nil {
 		log.Fatalf("Failed to get VMware GPU models: %v", err)
 	}
 	fmt.Printf("GPU models: %d\n", len(gpuModels))
@@ -94,7 +84,8 @@ func runVMwareExample(ctx context.Context, client *sdk.CloudClient) {
 		fmt.Printf("  ... and %d more images\n", len(images)-displayCount)
 	}
 
-	// GPU-only images are requested with the gpu_only filter
+	// GPU-only images: this family can ask for "requires a GPU" and for no filter
+	// at all, but not for "cannot use a GPU" — GetVmwareImageList can.
 	fmt.Printf("\n=== Getting GPU-only images of location %d ===\n", locationID)
 	gpuImages, err := client.GetVMwareImages(ctx, locationID, true)
 	if err != nil {

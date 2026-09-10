@@ -44,12 +44,14 @@ type VmwareServer struct {
 	IsPowerOn      bool    `json:"is_power_on"`
 	// VmToolsInstalled is live-only: it is populated only by Get-by-id and is
 	// absent from list responses.
-	VmToolsInstalled *bool      `json:"vm_tools_installed,omitempty"`
-	GPU              *VmwareGPU `json:"gpu,omitempty"`
-	// NestedHypervisor reports whether nested virtualization is enabled on the
-	// server. Mutually exclusive with a GPU allocation; switched with
-	// EnableVmwareServerNestedHypervisor / DisableVmwareServerNestedHypervisor.
+	VmToolsInstalled *bool `json:"vm_tools_installed,omitempty"`
+	// NestedHypervisor reports whether nested virtualization is on. It is
+	// switched with EnableVmwareServerNestedHypervisor /
+	// DisableVmwareServerNestedHypervisor, is mutually exclusive with a GPU
+	// allocation, and is offered only in the locations that report
+	// VmwareLocation.NestedHypervisorSupported.
 	NestedHypervisor bool        `json:"nested_hypervisor"`
+	GPU              *VmwareGPU  `json:"gpu,omitempty"`
 	NICs             []VmwareNIC `json:"nics"`
 	Created          string      `json:"created"`
 }
@@ -83,25 +85,25 @@ func (r *VmwareGPURequest) Validate() error {
 
 // VmwareCreateServerRequest represents a request to create a VMware server.
 type VmwareCreateServerRequest struct {
-	LocationID           int               `json:"location_id"`
-	Name                 string            `json:"name"`
-	ComputerName         string            `json:"computer_name,omitempty"`
-	ImageID              int               `json:"image_id"`
-	CPUCount             int               `json:"cpu_count"`
-	RamMB                int               `json:"ram_mb"`
-	SystemDiskSizeMB     int               `json:"system_disk_size_mb"`
-	SystemDiskType       string            `json:"system_disk_type,omitempty"`
-	PublicNetworkID      *int              `json:"public_network_id,omitempty"`
-	NetworkBandwidthMbps *int              `json:"network_bandwidth_mbps,omitempty"`
-	BackupEnabled        *bool             `json:"backup_enabled,omitempty"`
-	BackupPeriod         *int              `json:"backup_period,omitempty"`
-	SSHKeys              []int             `json:"ssh_keys,omitempty"`
-	NeedSysprep          *bool             `json:"need_sysprep,omitempty"`
-	GPU                  *VmwareGPURequest `json:"gpu,omitempty"`
-	// NestedHypervisor orders the server with nested virtualization enabled;
-	// omitted means "off". It cannot be combined with GPU and requires a location
-	// that reports NestedHypervisorSupported.
-	NestedHypervisor *bool `json:"nested_hypervisor,omitempty"`
+	LocationID           int    `json:"location_id"`
+	Name                 string `json:"name"`
+	ComputerName         string `json:"computer_name,omitempty"`
+	ImageID              int    `json:"image_id"`
+	CPUCount             int    `json:"cpu_count"`
+	RamMB                int    `json:"ram_mb"`
+	SystemDiskSizeMB     int    `json:"system_disk_size_mb"`
+	SystemDiskType       string `json:"system_disk_type,omitempty"`
+	PublicNetworkID      *int   `json:"public_network_id,omitempty"`
+	NetworkBandwidthMbps *int   `json:"network_bandwidth_mbps,omitempty"`
+	BackupEnabled        *bool  `json:"backup_enabled,omitempty"`
+	BackupPeriod         *int   `json:"backup_period,omitempty"`
+	SSHKeys              []int  `json:"ssh_keys,omitempty"`
+	NeedSysprep          *bool  `json:"need_sysprep,omitempty"`
+	// NestedHypervisor orders the server with nested virtualization enabled.
+	// Omitted means disabled. It cannot be combined with GPU and is only accepted
+	// in a location that reports VmwareLocation.NestedHypervisorSupported.
+	NestedHypervisor *bool             `json:"nested_hypervisor,omitempty"`
+	GPU              *VmwareGPURequest `json:"gpu,omitempty"`
 }
 
 // Validate checks the create server request.

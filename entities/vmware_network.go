@@ -33,18 +33,22 @@ const (
 
 // VmwareNetwork represents a VMware network.
 type VmwareNetwork struct {
-	ID            int     `json:"id"`
-	LocationID    int     `json:"location_id"`
-	Type          string  `json:"type"`
-	Name          string  `json:"name"`
-	Address       *string `json:"address,omitempty"`
-	Mask          *int    `json:"mask,omitempty"`
-	Gateway       *string `json:"gateway,omitempty"`
-	BandwidthMbps *int    `json:"bandwidth_mbps,omitempty"`
-	IsDhcp        *bool   `json:"is_dhcp,omitempty"`
-	Shared        *bool   `json:"shared,omitempty"`
-	State         string  `json:"state"`
-	NICsCount     int     `json:"nics_count"`
+	ID         int     `json:"id"`
+	LocationID int     `json:"location_id"`
+	Type       string  `json:"type"`
+	Name       string  `json:"name"`
+	Address    *string `json:"address,omitempty"`
+	Mask       *int    `json:"mask,omitempty"`
+	Gateway    *string `json:"gateway,omitempty"`
+	// EdgeExternalIP is the external address of the network's edge gateway. It is
+	// absent for a network without an edge, and it is the address a DNAT rule's
+	// original_ip is normalized to (see VmwareEdgeNATRule.OriginalIP).
+	EdgeExternalIP *string `json:"edge_external_ip,omitempty"`
+	BandwidthMbps  *int    `json:"bandwidth_mbps,omitempty"`
+	IsDhcp         *bool   `json:"is_dhcp,omitempty"`
+	Shared         *bool   `json:"shared,omitempty"`
+	State          string  `json:"state"`
+	NICsCount      int     `json:"nics_count"`
 }
 
 // VmwareCreateIsolatedNetworkRequest represents a request to create an isolated
@@ -99,12 +103,15 @@ func (r *VmwareCreateRoutedNetworkRequest) Validate() error {
 type VmwareCreatePublicNetworkRequest struct {
 	LocationID int    `json:"location_id"`
 	Name       string `json:"name"`
-	// Capacity is the number of public addresses, as a decimal string (the shape
-	// the contract declares; the API happens to accept a JSON number too). Only a
-	// few sizes are valid — 1, 2 and 4 pass validation on the stand, while 8 and
-	// above are refused with -12042 "The capacity of public network is invalid".
-	// A valid size can still fail with -12043 "There is no free network at the
-	// moment" when the location has no free block left.
+	// Capacity is a subnet prefix length, not a number of addresses: the contract
+	// declares NetworkCapacityEnum, whose members are Network24…Network29 and which
+	// travels as a string. A decimal string such as "1" or "4" is accepted only
+	// because the API's StringEnumConverter also parses a member's numeric value,
+	// and the numbering does not follow the prefix — 1 is Network24, 2 is Network29,
+	// 3 is Network25, 4 is Network26, 5 is Network27, 6 is Network28. Anything
+	// outside the enum (8 and above) is refused with -12042 "The capacity of public
+	// network is invalid"; a valid value can still fail with -12043 "There is no
+	// free network at the moment" when the location has no free block left.
 	Capacity      string `json:"capacity"`
 	BandwidthMbps *int   `json:"bandwidth_mbps,omitempty"`
 }
@@ -132,10 +139,9 @@ func (r *VmwareCreatePublicNetworkRequest) Validate() error {
 // VmwareEditNetworkRequest represents a request to edit a network. Both fields
 // are optional; at least one must be provided.
 //
-// BandwidthMbps here is the ONLY way to set the bandwidth of a routed
-// network's edge - edge bandwidth and network bandwidth are one field. The former
-// PUT /edge/bandwidth endpoint is not exposed by the SDK because it never
-// persisted the value (see the note at the bottom of entities/vmware_edge.go).
+// BandwidthMbps here also sets the bandwidth of a routed network's edge - edge
+// bandwidth and network bandwidth are one field, so this and
+// VmwareUpdateEdgeBandwidthRequest write the same value.
 //
 // Bandwidth does not apply to an isolated
 // (private_client) network, and such a network no longer reports one -

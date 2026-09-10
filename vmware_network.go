@@ -191,8 +191,8 @@ func (c *CloudClient) waitVmwareNetworkCreated(ctx context.Context, task *Vmware
 
 // EditVmwareNetwork updates the name and/or bandwidth of a VMware network.
 //
-// This is also the only way to set the bandwidth of a routed network's
-// edge — edge bandwidth and network bandwidth are one field.
+// Bandwidth here is the same field as a routed network's edge bandwidth, which
+// UpdateVmwareEdgeBandwidth writes.
 //
 // Bandwidth does not apply to an isolated network — send only Name.
 //
@@ -572,12 +572,47 @@ func (c *CloudClient) DeleteVmwareEdgeVPNTunnelAndWait(ctx context.Context, netw
 }
 
 // ===================== Edge: Bandwidth =====================
+
+// UpdateVmwareEdgeBandwidth sets the uplink bandwidth (QoS) of a routed network's
+// edge gateway and returns the background task to await.
 //
-// UpdateVmwareEdgeBandwidth was removed. PUT /edge/bandwidth reported
-// success and ran its task to completion without ever persisting the value, so the
-// API kept serving the old bandwidth and the next network edit silently reverted
-// the real setting; it also bypassed the bandwidth policy check and the NSX-T path,
-// and the value could not be read back (GET answered 405).
+// Edge bandwidth and network bandwidth are one field, so EditVmwareNetwork sets
+// the same value and VmwareNetwork.BandwidthMbps reads it back — this endpoint
+// has no read of its own.
 //
-// Bandwidth is one field shared by the network and its edge: set it with
-// EditVmwareNetwork and read it from VmwareNetwork.BandwidthMbps.
+// The endpoint applies the value only on a platform deployment that carries the
+// fix for it; an older one completes the task and keeps the previous bandwidth.
+// Use EditVmwareNetwork there.
+func (c *CloudClient) UpdateVmwareEdgeBandwidth(ctx context.Context, networkID int, req *entities.VmwareUpdateEdgeBandwidthRequest) (*VmwareTaskID, error) {
+	if networkID <= 0 {
+		return nil, fmt.Errorf("network ID must be greater than 0")
+	}
+	if req == nil {
+		return nil, fmt.Errorf("update edge bandwidth request is required")
+	}
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	httpReq, err := c.newRequest(ctx, http.MethodPut, buildVmwareEdgePath(networkID, "bandwidth"), req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create update edge bandwidth of vmware network %d request: %w", networkID, err)
+	}
+	var task VmwareTaskID
+	if err := c.doJSON(httpReq, &task); err != nil {
+		return nil, fmt.Errorf("failed to update edge bandwidth of vmware network %d: %w", networkID, err)
+	}
+	return &task, nil
+}
+
+// UpdateVmwareEdgeBandwidthAndWait sets the edge bandwidth, waits for the task and
+// returns the refreshed network, whose BandwidthMbps carries the applied value.
+func (c *CloudClient) UpdateVmwareEdgeBandwidthAndWait(ctx context.Context, networkID int, req *entities.VmwareUpdateEdgeBandwidthRequest) (*entities.VmwareNetwork, error) {
+	task, err := c.UpdateVmwareEdgeBandwidth(ctx, networkID, req)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.awaitVmwareTask(ctx, task); err != nil {
+		return nil, err
+	}
+	return c.GetVmwareNetwork(ctx, networkID)
+}

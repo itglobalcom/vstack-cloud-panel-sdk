@@ -13,36 +13,52 @@ import (
 const (
 	vmwareBasePath = "vmware"
 
-	vmwareLocationsPath       = "locations"
-	vmwareImagesPath          = "images"
+	vmwareLocationsPath = "locations"
+	vmwareImagesPath    = "images"
+	vmwareGPUModelsPath = "gpu-models"
+
+	// Deprecated: these two resources are not served under api/v1. They exist
+	// only under the AdminV2 prefix (vmware-disk-types, vmware-storage-profiles),
+	// so a Public API request for them is answered with 404.
 	vmwareDiskTypesPath       = "disk-types"
 	vmwareStorageProfilesPath = "storage-profiles"
-	vmwareGPUModelsPath       = "gpu-models"
 )
 
-// Response types for VMware catalog (lookup) operations
+// Response types for the superseded VMware catalog (lookup) operations
 type (
 	// ListVMwareLocationsResponse represents a VMware locations list response
+	//
+	// Deprecated: GetVmwareLocationList supersedes GetVMwareLocations.
 	ListVMwareLocationsResponse struct {
 		Locations []entities.VMwareLocation `json:"locations,omitempty"`
 	}
 
 	// ListVMwareDiskTypesResponse represents a VMware disk types list response
+	//
+	// Deprecated: the response of GetVMwareDiskTypes, which the Public API does
+	// not serve. Disk types arrive inside VmwareLocation.DiskTypes.
 	ListVMwareDiskTypesResponse struct {
 		DiskTypes []entities.VMwareDiskType `json:"disk_types,omitempty"`
 	}
 
-	// ListVMwareGPUModelsResponse represents a VMware GPU models list response
-	ListVMwareGPUModelsResponse struct {
-		GPUModels []entities.VMwareGPUModel `json:"gpu_models,omitempty"`
-	}
-
 	// ListVMwareStorageProfilesResponse represents a VMware storage profiles list response
+	//
+	// Deprecated: the response of GetVMwareStorageProfiles, which the Public API
+	// does not serve.
 	ListVMwareStorageProfilesResponse struct {
 		StorageProfiles []entities.VMwareStorageProfile `json:"storage_profiles,omitempty"`
 	}
 
+	// ListVMwareGPUModelsResponse represents a VMware GPU models list response
+	//
+	// Deprecated: GetVmwareGPUModelList supersedes GetVMwareGPUModels.
+	ListVMwareGPUModelsResponse struct {
+		GPUModels []entities.VMwareGPUModel `json:"gpu_models,omitempty"`
+	}
+
 	// ListVMwareImagesResponse represents a VMware images list response
+	//
+	// Deprecated: GetVmwareImageList supersedes GetVMwareImages.
 	ListVMwareImagesResponse struct {
 		Images []entities.VMwareImage `json:"images,omitempty"`
 	}
@@ -80,7 +96,10 @@ func addIDFilter(filters url.Values, name string, value int) error {
 }
 
 // GetVMwareLocations retrieves the VMware locations connected to the partner
-// and available to the project
+// and available to the project.
+//
+// Deprecated: use GetVmwareLocationList, which returns the same endpoint's
+// response and is the family the rest of the VMware section is built on.
 func (c *CloudClient) GetVMwareLocations(ctx context.Context) ([]entities.VMwareLocation, error) {
 	path := buildVMwarePath(vmwareLocationsPath, nil)
 	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
@@ -98,6 +117,10 @@ func (c *CloudClient) GetVMwareLocations(ctx context.Context) ([]entities.VMware
 
 // GetVMwareDiskTypes retrieves the VMware disk types allowed for the project.
 // locationID is optional — pass 0 to list the disk types of every location.
+//
+// Deprecated: read VmwareLocation.DiskTypes from GetVmwareLocationList instead.
+// /vmware/disk-types is not a Public API route — the catalog exists only under
+// the AdminV2 prefix — so this call is always answered with 404.
 func (c *CloudClient) GetVMwareDiskTypes(ctx context.Context, locationID int) ([]entities.VMwareDiskType, error) {
 	filters := url.Values{}
 	if err := addIDFilter(filters, "location_id", locationID); err != nil {
@@ -118,30 +141,12 @@ func (c *CloudClient) GetVMwareDiskTypes(ctx context.Context, locationID int) ([
 	return resp.DiskTypes, nil
 }
 
-// GetVMwareGPUModels retrieves the VMware GPU models available to the partner.
-// locationID is optional — pass 0 to list the models of every location.
-func (c *CloudClient) GetVMwareGPUModels(ctx context.Context, locationID int) ([]entities.VMwareGPUModel, error) {
-	filters := url.Values{}
-	if err := addIDFilter(filters, "location_id", locationID); err != nil {
-		return nil, err
-	}
-
-	path := buildVMwarePath(vmwareGPUModelsPath, filters)
-	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create list VMware GPU models request: %w", err)
-	}
-
-	var resp ListVMwareGPUModelsResponse
-	if err := c.doJSON(req, &resp); err != nil {
-		return nil, fmt.Errorf("failed to list VMware GPU models: %w", err)
-	}
-
-	return resp.GPUModels, nil
-}
-
 // GetVMwareStorageProfiles retrieves the active VMware storage profiles.
 // Both filters are optional — pass 0 to skip a filter.
+//
+// Deprecated: the Public API publishes no storage-profile resource — profiles are
+// an internal join behind a location's disk types. /vmware/storage-profiles exists
+// only under the AdminV2 prefix, so this call is always answered with 404.
 func (c *CloudClient) GetVMwareStorageProfiles(ctx context.Context, locationID, diskTypeID int) ([]entities.VMwareStorageProfile, error) {
 	filters := url.Values{}
 	if err := addIDFilter(filters, "location_id", locationID); err != nil {
@@ -165,19 +170,48 @@ func (c *CloudClient) GetVMwareStorageProfiles(ctx context.Context, locationID, 
 	return resp.StorageProfiles, nil
 }
 
+// GetVMwareGPUModels retrieves the VMware GPU models available to the partner.
+// locationID is optional — pass 0 to list the models of every location.
+//
+// Deprecated: use GetVmwareGPUModelList, which distinguishes an absent
+// max_server_ram_mb / is_available from a zero one.
+func (c *CloudClient) GetVMwareGPUModels(ctx context.Context, locationID int) ([]entities.VMwareGPUModel, error) {
+	filters := url.Values{}
+	if err := addIDFilter(filters, "location_id", locationID); err != nil {
+		return nil, err
+	}
+
+	path := buildVMwarePath(vmwareGPUModelsPath, filters)
+	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create list VMware GPU models request: %w", err)
+	}
+
+	var resp ListVMwareGPUModelsResponse
+	if err := c.doJSON(req, &resp); err != nil {
+		return nil, fmt.Errorf("failed to list VMware GPU models: %w", err)
+	}
+
+	return resp.GPUModels, nil
+}
+
 // GetVMwareImages retrieves the VMware OS images available to the project.
 // locationID is optional — pass 0 to list the images of every location.
-// gpuOnly restricts the result to GPU-only images; false (the API default)
-// returns every image.
+// gpuOnly restricts the result to GPU-only images; false returns every image.
+//
+// Deprecated: use GetVmwareImageList. The GPU filter of the endpoint has three
+// states, and this two-state parameter cannot ask for the third ("unsupported",
+// the images that cannot use a GPU at all).
 func (c *CloudClient) GetVMwareImages(ctx context.Context, locationID int, gpuOnly bool) ([]entities.VMwareImage, error) {
 	filters := url.Values{}
 	if err := addIDFilter(filters, "location_id", locationID); err != nil {
 		return nil, err
 	}
-	// Only send gpu_only when it changes the API default (false), so that the
-	// unfiltered call stays a plain GET without a query string.
+	// The filter is "gpu", with the enum value entities.VmwareImageGPURequired.
+	// It is only sent when it narrows the result, so that the unfiltered call
+	// stays a plain GET without a query string.
 	if gpuOnly {
-		filters.Set("gpu_only", "true")
+		filters.Set("gpu", entities.VmwareImageGPURequired)
 	}
 
 	path := buildVMwarePath(vmwareImagesPath, filters)

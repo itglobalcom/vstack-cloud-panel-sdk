@@ -487,8 +487,10 @@ func (c *CloudClient) ResetVmwareServerAndWait(ctx context.Context, serverID int
 // ===================== Nested hypervisor =====================
 
 // vmwareNestedHypervisor switches nested virtualization on a server and returns
+// vmwareNestedHypervisor switches nested virtualization on a server and returns
 // the background task, or (nil, nil) when the server is already in the requested
-// state.
+// state: the API creates no task for an idempotent outcome and answers 200 with
+// an explicit "task_id": null.
 func (c *CloudClient) vmwareNestedHypervisor(ctx context.Context, serverID int, action string) (*VmwareTaskID, error) {
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")
@@ -523,33 +525,36 @@ func (c *CloudClient) vmwareNestedHypervisorAndWait(ctx context.Context, serverI
 	return c.GetVmwareServer(ctx, serverID)
 }
 
-// EnableVmwareServerNestedHypervisor enables nested virtualization on a server
-// and returns the background task to await, or (nil, nil) when it is already
-// enabled.
+// EnableVmwareServerNestedHypervisor turns nested virtualization on and returns
+// the background task to await, or (nil, nil) when it is already enabled.
 //
-// The backend saga power-cycles a running server; a server that is off stays
-// off. Rejected for a GPU server, a suspended server and a location without the
-// capability — see IsVmwareOperationNotSupportedForGpuServer,
-// IsVmwareServerSuspended and IsVmwareNestedHypervisorNotSupportedInLocation.
+// The feature is offered per location — check
+// VmwareLocation.NestedHypervisorSupported before ordering it — and the current
+// setting of a server is VmwareServer.NestedHypervisor. The backend saga
+// power-cycles a running server; a server that is off stays off. A server busy
+// with another task is refused with 409 (IsConflict); a GPU server, a suspended
+// server and a location without the capability are refused with their own codes,
+// see IsVmwareOperationNotSupportedForGpuServer, IsVmwareServerSuspended and
+// IsVmwareNestedHypervisorNotSupportedInLocation.
 func (c *CloudClient) EnableVmwareServerNestedHypervisor(ctx context.Context, serverID int) (*VmwareTaskID, error) {
 	return c.vmwareNestedHypervisor(ctx, serverID, "enable")
 }
 
-// EnableVmwareServerNestedHypervisorAndWait enables nested virtualization, waits
+// EnableVmwareServerNestedHypervisorAndWait turns nested virtualization on, waits
 // for the task and returns the refreshed server. When it was already enabled
 // there is no task to wait for and the current server state is returned.
 func (c *CloudClient) EnableVmwareServerNestedHypervisorAndWait(ctx context.Context, serverID int) (*entities.VmwareServer, error) {
 	return c.vmwareNestedHypervisorAndWait(ctx, serverID, "enable")
 }
 
-// DisableVmwareServerNestedHypervisor disables nested virtualization on a server
-// and returns the background task to await, or (nil, nil) when it is already
-// disabled. Like enabling, it power-cycles a running server.
+// DisableVmwareServerNestedHypervisor turns nested virtualization off and returns
+// the background task to await, or (nil, nil) when it is already disabled. Like
+// enabling, it power-cycles a running server.
 func (c *CloudClient) DisableVmwareServerNestedHypervisor(ctx context.Context, serverID int) (*VmwareTaskID, error) {
 	return c.vmwareNestedHypervisor(ctx, serverID, "disable")
 }
 
-// DisableVmwareServerNestedHypervisorAndWait disables nested virtualization,
+// DisableVmwareServerNestedHypervisorAndWait turns nested virtualization off,
 // waits for the task and returns the refreshed server. When it was already
 // disabled there is no task to wait for and the current server state is returned.
 func (c *CloudClient) DisableVmwareServerNestedHypervisorAndWait(ctx context.Context, serverID int) (*entities.VmwareServer, error) {
@@ -712,8 +717,11 @@ func (c *CloudClient) DeleteVmwareVolumeAndWait(ctx context.Context, serverID, v
 
 // GetVmwareSnapshot returns the snapshot of a server (a server has at most one).
 //
-// A server with no snapshot answers HTTP 404, so IsNotFound(err) is the normal
-// "no snapshot" signal here rather than an error condition.
+// A server with no snapshot answers HTTP 200 with the body {} — the API sets the
+// snapshot field to null and its NullValueHandling.Ignore drops it — so the empty
+// answer is turned into ErrNotFound here. HTTP 404 means the server itself does
+// not exist, so IsNotFound(err) does not tell "no snapshot" from "no server";
+// errors.Is(err, ErrNotFound) is the "no snapshot" signal.
 func (c *CloudClient) GetVmwareSnapshot(ctx context.Context, serverID int) (*entities.VmwareSnapshot, error) {
 	if serverID <= 0 {
 		return nil, fmt.Errorf("server ID must be greater than 0")

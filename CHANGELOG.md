@@ -4,53 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-09-10
 
-### Added
+Adds support for the **VMware Cloud** service and brings the base task model up to
+the unified model the API publishes.
 
-- **Nested hypervisor on a VMware Cloud server.** `nested_hypervisor` on
-  `VmwareServer` (list and get) and on `VmwareCreateServerRequest` (the type
-  `VerifyVmwareServer` takes as well), plus `EnableVmwareServerNestedHypervisor` and
-  `DisableVmwareServerNestedHypervisor` with their `...AndWait` variants. The switch
-  is applied by a backend saga that power-cycles a running server; a server that is
-  already off stays off. Switching to the state the server is already in is answered
-  with no task at all: the raw methods return `(nil, nil)` and the `...AndWait` forms
-  return the current server without waiting for anything.
-- `NestedHypervisorSupported` on both location models — `VmwareLocation`
-  (`GetVmwareLocationList`) and `VMwareLocation` (`GetVMwareLocations`). The capability
-  belongs to a VDC, so the catalog reports it per location as "some VDC available to
-  this project supports it", and two projects can see different values for the same
-  location.
-- Error codes and helpers for the refusals ordering and switching can hit:
-  `APICodeVmwareOperationNotSupportedForGpuServer` (-8149 — nested hypervisor and a
-  GPU allocation are mutually exclusive), `APICodeVmwareServerIsSuspended` (-8154) and
-  `APICodeVmwareNestedHypervisorNotSupportedInLocation` (-8155), with the matching
-  `IsVmwareOperationNotSupportedForGpuServer`, `IsVmwareServerSuspended` and
-  `IsVmwareNestedHypervisorNotSupportedInLocation`.
-
-## [1.1.3] - 2026-08-20
-
-### Fixed
-
-- **`v1.1.2` does not build; this release is the fix.** Four error declarations were
-  lost in a merge before `v1.1.2` was tagged while their callers stayed: on that tag
-  `go build ./...` fails with `undefined: sdk.IsVmwareLocationNotFound`,
-  `undefined: sdk.IsNetworkInUse` and `undefined: sdk.IsVmwareNoFreePublicNetwork`
-  in `examples/`. Restored here as `IsNetworkInUse`, `IsVmwareNoFreePublicNetwork`,
-  `APICodeVmwareNoFreePublicNetwork` (-12043) and
-  `APICodeVmwareInvalidPublicNetworkCapacity` (-12042); the dangling
-  `IsVmwareLocationNotFound` reference was pointed at the helper that does exist,
-  `IsInvalidLocation`. Pin `v1.1.3` or later — `v1.1.2` is unusable.
-
-## [1.1.2] - 2026-08-19
-
-Adds support for the **VMware Cloud** service. This is new surface only — no
-previously published type or method was removed or renamed.
-
-> **Do not pin this tag.** `go build ./...` fails on it; use `v1.1.3`. The version
-> number is also irregular for the content: a whole new service arrived in a patch
-> bump from `1.1.0`, and `1.1.1` was never released. Both are recorded rather than
-> rewritten — the tag is published.
+The release is additive: nothing published is removed, and the declarations that
+describe routes the Public API does not serve are marked deprecated instead (see
+Deprecated).
 
 ### Added
 
@@ -59,9 +20,29 @@ previously published type or method was removed or renamed.
   (on, off, graceful shutdown, reboot, reset).
 - **VMware Cloud server sub-resources**: data volumes, the per-server snapshot, network
   interfaces, and the server firewall.
+- **Nested hypervisor on a VMware Cloud server.** `nested_hypervisor` on
+  `VmwareServer` (list and get) and on `VmwareCreateServerRequest` (the type
+  `VerifyVmwareServer` takes as well), plus `EnableVmwareServerNestedHypervisor` and
+  `DisableVmwareServerNestedHypervisor` with their `...AndWait` variants. The switch
+  is applied by a backend saga that power-cycles a running server; a server that is
+  already off stays off. Switching to the state the server is already in is answered
+  with no task at all: the raw methods return `(nil, nil)` and the `...AndWait` forms
+  return the current server without waiting for anything.
+- `NestedHypervisorSupported` on `VmwareLocation` (`GetVmwareLocationList`, and through
+  the deprecated `VMwareLocation` alias). The capability belongs to a VDC, so the
+  catalog reports it per location as "some VDC available to this project supports it",
+  and two projects can see different values for the same location.
+- Error codes and helpers for the refusals ordering and switching can hit:
+  `APICodeVmwareOperationNotSupportedForGpuServer` (-8149 — nested hypervisor and a
+  GPU allocation are mutually exclusive), `APICodeVmwareServerIsSuspended` (-8154) and
+  `APICodeVmwareNestedHypervisorNotSupportedInLocation` (-8155), with the matching
+  `IsVmwareOperationNotSupportedForGpuServer`, `IsVmwareServerSuspended` and
+  `IsVmwareNestedHypervisorNotSupportedInLocation`.
 - **VMware Cloud networks**: isolated, routed and public networks, editing, deletion,
   and attaching servers in a batch.
-- **VMware Cloud edge gateway** (routed networks): firewall, NAT and IPsec VPN.
+- **VMware Cloud edge gateway** (routed networks): firewall, NAT, IPsec VPN and the
+  uplink bandwidth (`UpdateVmwareEdgeBandwidth`, `UpdateVmwareEdgeBandwidthAndWait`,
+  `entities.VmwareUpdateEdgeBandwidthRequest`).
 - **VMware Cloud catalogs**: locations (each carrying its disk types and their size
   limits), OS images with a GPU filter, and GPU slicing profiles.
 - `...AndWait` variants for every VMware mutator that starts a background task. They
@@ -91,10 +72,12 @@ previously published type or method was removed or renamed.
 - `RequestError.ErrorParams`, the parsed `error_params` block the API attaches to an
   error to point at the field or list element that failed. This is the only way to tell
   which element of a batch operation was rejected.
-- Error helpers and codes: `IsInvalidLocation` and `APICodeDCLocationDoesNotExist`.
-  (`IsNetworkInUse`, `IsVmwareNoFreePublicNetwork` and the two public-network capacity
-  codes are documented under `[1.1.3]`: they are absent from this tag's tree, which is
-  what breaks its build.)
+- Error helpers and codes: `IsInvalidLocation` and `APICodeDCLocationDoesNotExist`
+  (`IsNetworkInUse`, `IsVmwareNoFreePublicNetwork`, `APICodeVmwareNoFreePublicNetwork`
+  and `APICodeVmwareInvalidPublicNetworkCapacity` arrived in `[1.1.3]`).
+- `entities.VmwareNetwork.EdgeExternalIP` (`edge_external_ip`), the external address of
+  the network's edge gateway. It is what a DNAT rule's `original_ip` is normalized to,
+  and the network read is the only operation of the contract that publishes it.
 - Constants for the VMware enums: server and network states, network types, server and
   edge firewall actions and traffic directions, NAT rule types, VPN encryption types and
   Diffie-Hellman groups, image GPU filter values.
@@ -103,29 +86,85 @@ previously published type or method was removed or renamed.
   afterwards, and prints a pass/fail tally.
 - Unit tests for the VMware task-id handling, path building, input validation and all
   request `Validate()` methods.
+- **VMware Cloud nested virtualization**: `EnableVmwareServerNestedHypervisor` and
+  `DisableVmwareServerNestedHypervisor` with their `...AndWait` pairs, the
+  `NestedHypervisor` field on `VmwareServer` and `VmwareCreateServerRequest`, and
+  `VmwareLocation.NestedHypervisorSupported`, which says where the feature is offered.
+  An idempotent call creates no task and answers with an empty `*VmwareTaskID`.
+- The unified task model on `entities.TaskResponse`: `Type`, `ProgressPercent`,
+  `Completed` and `Resources` (`[]TaskResource`). `Resources` is the complete list of
+  what a task touched and the only place some resources appear at all — a DNS `ptr`
+  record and a K8s cluster have no field of their own. `ResourceID` reads one out.
+- `TaskState*` and `TaskResource*`, the single registry of task states and resource
+  types. The `VmwareTaskState*` / `VmwareTaskResource*` names are defined as these
+  constants, and `entities.VmwareTaskResource` now names `entities.TaskResource`.
+- `TaskResponse.IsTerminal`, `IsSucceeded` and `IsFailed`. `is_completed` is a
+  five-member enum, not a boolean.
+- `AlreadyCompletedTaskID` and `IsAlreadyCompletedTaskID`: the synthetic
+  `already_completed_task` id that a synchronous vStack delete returns with
+  `?return_task=true`. The wait answers it without a request.
 
 ### Changed
 
-- `GetTask` now rejects a VMware task id (`vmw{N}`) up front instead of issuing the
-  request. Previously such a call either failed with an unmarshal error that looked like
-  a broken API, or — for a task carrying no `server_id`/`network_id` — decoded into an
-  empty `IsCompleted` and hung the wait on an already-finished task. Use
-  `GetVmwareTask` for those ids. Correct callers are unaffected.
+- `GetTask` accepts a task id of **any** family, VMware (`vmw{N}`) included, and
+  `entities.TaskResponse` decodes all of them: the unified part of the model is the same
+  for every service, and the legacy per-resource fields a service does not send stay
+  empty. The reason the VMware id used to be rejected does not hold on the current
+  contract — a VMware task carries no numeric `server_id`/`network_id`, and
+  `is_completed` is always a PascalCase string. `GetVmwareTask` still returns the
+  VMware-typed model, whose `ServerID`/`NetworkID` hand back ints. This is a widening;
+  no previously working call changes behaviour.
+- **Waiting** for a VMware task through the base helpers is still refused, now by the
+  wait itself rather than as a side effect of `GetTask`: VMware tasks routinely outrun
+  the base `PollingTimeout`. Use `WaitVmwareTask`.
+- The base wait leaves its loop on **any** terminal state. `TaskState` has five members
+  and `Canceled` is terminal, so a canceled task used to be polled until the wait timed
+  out instead of being reported. The error wraps `ErrTaskFailed` and names the state.
+- `entities.TaskResponse.KubernetesClusterID` reads `k8s_cluster_id`. The tag was
+  `cluster_id`, which no task DTO publishes, so the field was never filled.
+- The per-resource `TaskResponse` id fields are marked deprecated, matching the API,
+  which marks them `[Obsolete("use resources[]")]`. They are still filled and still
+  published. `KubernetesNodeGroupID` is deprecated outright: no task of any service
+  carries a node group id, so the field never had a wire counterpart.
+- `GetVMwareImages` sends the real GPU filter, `gpu=required`. It sent
+  `gpu_only=true`, which is not a declared parameter of the endpoint and was dropped:
+  asking for GPU-only images answered with every image.
 - `WaitVmwareTask` logs when a configured `PollingTimeout` below the VMware floor is
   raised, so the effective wait is discoverable from the log.
 - Documented previously undocumented exported declarations (`RetryReason.String`,
   `DefaultRetryPolicy`, `ValidationError`, `NewValidationError`, `CreateNetworkRequest`,
   `UpdateNetworkRequest`, `CreateServerTagRequest`).
 
+### Deprecated
+
+Nothing is removed — every declaration below stays published and keeps compiling.
+
+- `GetVMwareLocations`, `GetVMwareImages` and `GetVMwareGPUModels`, in favour of
+  `GetVmwareLocationList`, `GetVmwareImageList` and `GetVmwareGPUModelList`.
+- `GetVMwareDiskTypes` and `GetVMwareStorageProfiles`, with
+  `ListVMwareDiskTypesResponse`, `ListVMwareStorageProfilesResponse` and
+  `entities.VMwareStorageProfile`. `/vmware/disk-types` and `/vmware/storage-profiles`
+  exist only under the AdminV2 prefix; through the Public API both answer 404. Disk
+  types travel inside the location (`VmwareLocation.DiskTypes`); storage profiles are
+  not published at all.
+- `entities.VMwareDiskType`, in favour of `entities.VmwareLocationDiskType`. Its fields
+  (`ID`, `MinGB`, `MaxGB`, `StepGB`, `StartValueGB`) do not match the wire — the
+  contract publishes disk types inside a location, without an id and in megabytes — so
+  they decode to zero.
+- `entities.VMwareLocation` now names `VmwareLocation`, so it gains `DiskTypes` and
+  `NestedHypervisorSupported`; its three previous fields are unchanged.
+
 ### Notes for VMware Cloud users
 
 Behaviour of the service API that the SDK cannot paper over, and that a control loop
 such as a Terraform provider has to account for:
 
-- **Edge bandwidth is the network's bandwidth.** Set it with `EditVmwareNetwork` and
-  read it from `VmwareNetwork.BandwidthMbps`. The SDK deliberately exposes no
-  `PUT /edge/bandwidth` wrapper: that endpoint reports success without persisting the
-  value, so the API keeps serving the old bandwidth afterwards.
+- **Edge bandwidth is the network's bandwidth.** `UpdateVmwareEdgeBandwidth` and
+  `EditVmwareNetwork` write the same field, and it is read from
+  `VmwareNetwork.BandwidthMbps` — the edge endpoint publishes no read. Against a
+  platform deployment older than the release that fixed `PUT /edge/bandwidth`, that
+  endpoint completes its task without persisting anything; use `EditVmwareNetwork`
+  there.
 - **A completed task is not a settled resource.** After a rebuild the replaced server
   stays readable in state `deleting` for minutes. Use the resource-state waiters.
 - **A create has happened even if the wait fails.** `CreateVmwareServerAndWait`,
@@ -146,6 +185,30 @@ such as a Terraform provider has to account for:
 - **The API serializes changes per object.** A second mutation on the same server or
   network while the first is still running is rejected with `APICodeConflict` (-4000),
   which the client retries automatically.
+
+## [1.1.3] - 2026-08-20
+
+### Fixed
+
+- **`v1.1.2` does not build; this release is the fix.** Four error declarations were
+  lost in a merge before `v1.1.2` was tagged while their callers stayed: on that tag
+  `go build ./...` fails with `undefined: sdk.IsVmwareLocationNotFound`,
+  `undefined: sdk.IsNetworkInUse` and `undefined: sdk.IsVmwareNoFreePublicNetwork`
+  in `examples/`. Restored here as `IsNetworkInUse`, `IsVmwareNoFreePublicNetwork`,
+  `APICodeVmwareNoFreePublicNetwork` (-12043) and
+  `APICodeVmwareInvalidPublicNetworkCapacity` (-12042); the dangling
+  `IsVmwareLocationNotFound` reference was pointed at the helper that does exist,
+  `IsInvalidLocation`. Pin `v1.1.3` or later — `v1.1.2` is unusable.
+
+## [1.1.2] - 2026-08-19
+
+Adds support for the **VMware Cloud** service. This is new surface only — no
+previously published type or method was removed or renamed.
+
+> **Do not pin this tag.** `go build ./...` fails on it; use `v1.1.3`. The version
+> number is also irregular for the content: a whole new service arrived in a patch
+> bump from `1.1.0`, and `1.1.1` was never released. Both are recorded rather than
+> rewritten — the tag is published.
 
 ## [1.1.0] - 2026-08-14
 
