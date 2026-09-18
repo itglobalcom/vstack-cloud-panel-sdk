@@ -74,7 +74,7 @@ overridden with functional options:
 | --- | --- | --- |
 | `WithTimeout` | `30s` | HTTP request timeout |
 | `WithPollingInterval` | `5s` | Poll interval for `...AndWait` operations |
-| `WithPollingTimeout` | `2m` | Maximum time to wait for a task |
+| `WithPollingTimeout` | `15m` | Maximum time to wait for a task |
 | `WithUserAgent` | `vstack-cloud-panel-go-sdk/…` | Custom `User-Agent` |
 | `WithHTTPClient` | — | Provide a custom `*http.Client` |
 | `WithLogger` | no-op | Logger implementing `Printf(format, ...any)` |

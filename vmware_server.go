@@ -130,7 +130,7 @@ func (c *CloudClient) CreateVmwareServer(ctx context.Context, req *entities.Vmwa
 // task to complete and returns the created server.
 //
 // Provisioning takes minutes, which is why VMware task waiting has its own
-// timeout floor (VmwareTaskWaitDefaultTimeout) rather than the 2m base
+// timeout floor (VmwareTaskWaitDefaultTimeout) rather than the base
 // PollingTimeout.
 func (c *CloudClient) CreateVmwareServerAndWait(ctx context.Context, req *entities.VmwareCreateServerRequest) (*entities.VmwareServer, error) {
 	order, err := c.CreateVmwareServer(ctx, req)

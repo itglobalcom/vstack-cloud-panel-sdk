@@ -17,6 +17,16 @@ const (
 	DefaultRetryWaitMax    = 30 * time.Second
 )
 
+// DefaultPollingTimeout is the wait a base "...AndWait" / Wait* call gives a
+// single task before giving up.
+//
+// The value is the platform deadline for the synchronous install of one-click
+// applications — 15 minutes: a server ordered with applications finishes its
+// create task only once every install has reached a terminal state, so a shorter
+// wait reports a timeout on an order that is still on schedule. Base resources
+// ordered without applications settle well inside it.
+const DefaultPollingTimeout = 15 * time.Minute
+
 // Config holds the configuration for the CloudClient
 type Config struct {
 	APIKey          string
@@ -26,13 +36,12 @@ type Config struct {
 	// PollingTimeout is the maximum time an "...AndWait" / Wait* call spends polling
 	// a single task before giving up.
 	//
-	// VMware operations run far longer than this 2m default — server create
-	// and copy take ~4 min, rebuild up to ~26 min — so VMware task waiting does NOT
-	// use this value as-is: WaitVmwareTask raises it to VmwareTaskWaitDefaultTimeout
-	// when it is smaller. Setting PollingTimeout above that floor still wins, which is
-	// worth doing for rebuild; setting it below has no effect on VMware waits (use
-	// WaitVmwareTaskWithTimeout to wait for less). Base resources use this value
-	// directly.
+	// VMware operations outrun this default — a rebuild reached ~26 min — so VMware
+	// task waiting does NOT use this value as-is: WaitVmwareTask raises it to
+	// VmwareTaskWaitDefaultTimeout when it is smaller. Setting PollingTimeout above
+	// that floor still wins, which is worth doing for rebuild; setting it below has
+	// no effect on VMware waits (use WaitVmwareTaskWithTimeout to wait for less).
+	// Base resources use this value directly.
 	PollingTimeout time.Duration
 	UserAgent      string
 	HTTPClient     *http.Client
@@ -148,10 +157,7 @@ func NewConfig(apiKey, baseURL string, opts ...Option) (*Config, error) {
 		BaseURL:         baseURL,
 		Timeout:         DefaultTimeout,
 		PollingInterval: DefaultPollingInterval,
-		// Deliberately kept at 2m: it is a cross-cutting default, and base resources
-		// settle well inside it. VMware tasks run far longer, so they do not use this
-		// value as-is — WaitVmwareTask raises it to VmwareTaskWaitDefaultTimeout.
-		PollingTimeout:  2 * time.Minute,
+		PollingTimeout:  DefaultPollingTimeout,
 		UserAgent:       DefaultUserAgent,
 		Logger:          NewNopLogger(),
 		LogLevel:        Info,
@@ -195,7 +201,7 @@ func (c *Config) normalize() {
 	}
 
 	if c.PollingTimeout <= 0 {
-		c.PollingTimeout = 5 * time.Minute
+		c.PollingTimeout = DefaultPollingTimeout
 	}
 
 	if c.UserAgent == "" {
