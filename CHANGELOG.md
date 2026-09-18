@@ -81,7 +81,10 @@ removed.
   and, when applications are ordered, installed: the SDK waits for the task, so its
   patience is that of the task. The default now sits above the VMware floor
   `VmwareTaskWaitDefaultTimeout` (30 minutes), so VMware waits left on the default run up
-  to an hour too, where they used to stop at 30 minutes.
+  to an hour too, where they used to stop at 30 minutes. The same default bounds the
+  deletion polling of `DeleteDomainAndWait` and `DeleteDomainRecordAndWait`, which waits
+  for a 404 rather than for a task: left on the default it now polls for up to an hour
+  before reporting the domain or record still there.
 - **The two defaults of the same setting are now one.** `NewConfig` applied 2 minutes and
   the normalization of a zero or negative `PollingTimeout` applied 5, so the wait a caller
   got depended on which of the two paths built the config; both now take

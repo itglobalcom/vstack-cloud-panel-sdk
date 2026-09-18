@@ -81,8 +81,9 @@ func (c *CloudClient) waitTaskCompletionWithTimeout(ctx context.Context, taskID 
 		return nil, fmt.Errorf("task ID is required")
 	}
 	// A VMware task is readable here but must not be awaited here: those tasks
-	// routinely run for tens of minutes (VmwareTaskWaitDefaultTimeout), so this
-	// wait would report a timeout on a healthy operation.
+	// routinely run for tens of minutes and this wait applies no floor, so a
+	// PollingTimeout below VmwareTaskWaitDefaultTimeout would report a timeout on a
+	// healthy operation.
 	if IsVmwareTaskID(taskID) {
 		return nil, fmt.Errorf("task ID %q is a VMware task ID; use WaitVmwareTask instead", taskID)
 	}

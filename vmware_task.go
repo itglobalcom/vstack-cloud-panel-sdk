@@ -100,8 +100,9 @@ func (c *CloudClient) GetVmwareTask(ctx context.Context, taskID string) (*entiti
 // This is a FLOOR, not a value: WithPollingTimeout raises the wait but cannot lower
 // it below this. To wait for less, call WaitVmwareTaskWithTimeout.
 //
-// The observed maxima sit only 4-5 minutes below this floor, so raise it with
-// WithPollingTimeout for rebuild, or wherever a timeout would be costly.
+// The observed maxima sit only 4-5 minutes below this floor, so a caller who lowered
+// PollingTimeout below it should raise it above the floor with WithPollingTimeout for
+// rebuild, or wherever a timeout would be costly.
 const VmwareTaskWaitDefaultTimeout = 30 * time.Minute
 
 // WaitVmwareTask polls a VMware task until it reaches a terminal state.

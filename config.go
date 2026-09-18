@@ -17,14 +17,16 @@ const (
 	DefaultRetryWaitMax    = 30 * time.Second
 )
 
-// DefaultPollingTimeout is the wait a base "...AndWait" / Wait* call gives a
-// single task before giving up.
+// DefaultPollingTimeout is the wait a base "...AndWait" / Wait* call gives an
+// outcome before giving up: a task reaching a terminal state, or — behind
+// DeleteDomainAndWait and DeleteDomainRecordAndWait — a deleted object answering 404.
 //
 // The value is the budget the panel itself gives a vStack task — one hour.
 // Everything a task does happens inside that budget: building the machine and,
 // when applications are ordered, installing them. The SDK waits for the task, so a
 // shorter wait here reports a timeout on a task the panel is still waiting on.
-// Base resources settle well inside it.
+// It is a ceiling on patience, not a duration: every wait returns as soon as its
+// outcome is reached, and base resources and DNS deletions settle well inside it.
 const DefaultPollingTimeout = 1 * time.Hour
 
 // Config holds the configuration for the CloudClient
@@ -76,8 +78,7 @@ func WithPollingInterval(interval time.Duration) Option {
 // WithPollingTimeout sets a maximum time for polling operations.
 //
 // For VMware tasks this raises the wait but cannot lower it: WaitVmwareTask never
-// waits less than VmwareTaskWaitDefaultTimeout. Raising it above that floor is worth
-// doing for rebuild, whose duration varies widely. See Config.PollingTimeout.
+// waits less than VmwareTaskWaitDefaultTimeout. See Config.PollingTimeout.
 func WithPollingTimeout(timeout time.Duration) Option {
 	return func(c *Config) {
 		c.PollingTimeout = timeout
