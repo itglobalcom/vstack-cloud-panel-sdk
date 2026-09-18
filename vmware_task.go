@@ -91,8 +91,8 @@ func (c *CloudClient) GetVmwareTask(ctx context.Context, taskID string) (*entiti
 
 // VmwareTaskWaitDefaultTimeout is the default wait applied by WaitVmwareTask.
 //
-// VMware operations run far longer than the base PollingTimeout, and
-// their duration varies wildly for identical work: the same
+// VMware operations run long, and their duration varies wildly for
+// identical work: the same
 // server order took 4m30s in one run and 21m30s in another, and two rebuilds of the
 // same server took 4m40s and 24m30s (earlier measurements reached ~26m). VMware task
 // waiting therefore has its own floor, and the base PollingTimeout is left alone.
