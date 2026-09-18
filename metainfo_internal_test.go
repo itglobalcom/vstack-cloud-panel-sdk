@@ -101,8 +101,8 @@ func TestParseApplicationsResponse(t *testing.T) {
 
 // The catalog of a project is read by location: the filter is a query parameter
 // of the same endpoint, and without it the call stays a plain GET on the
-// collection. A project with no catalog answers without the collection at all,
-// and that must read as an empty list rather than fail.
+// collection. A response that carries no collection must read as an empty list
+// rather than fail.
 func TestGetApplicationsRequest(t *testing.T) {
 	var lastRequest atomic.Value
 

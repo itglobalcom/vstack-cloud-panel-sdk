@@ -33,9 +33,8 @@ removed.
   model access), `CredentialsMode` (the class of sign-in: `ServicePassword`,
   `NoPasswordInTemplate`), `RecommendedCPU`, `RecommendedRamMB`, `RecommendedStorageMB`,
   `LLMKeyEnabled` (the platform can issue a language model key for this application),
-  `Category` and `DocumentationURL`. `Images` and `GetApplications` are unchanged; a
-  project with no catalog answers without the collection at all, which still decodes to
-  an empty list.
+  `Category` and `DocumentationURL`. `Images` and `GetApplications` are unchanged;
+  a response that carries no collection decodes to an empty list.
 - **Applications with parameters in a server order.**
   `entities.CreateServerRequest.Applications` (`[]entities.ApplicationSpec`) carries a
   catalog entry id, the parameter values by name and `IssueLLMKey`, the request for a

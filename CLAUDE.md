@@ -104,7 +104,12 @@ go build ./...
 go test -race ./...
 ```
 
-Локально: `make fmt`, `make vet`, `make test`. `-race` держит CI. Внешних линтеров нет.
+Локально: `make fmt`, `make vet`, `make test`. Перед пушем прогоняй `go test -race ./...`;
+на хосте без cgo — контейнером. Внешних линтеров нет.
+
+```
+docker run --rm -v "$PWD":/src -v "$(go env GOMODCACHE)":/go/pkg/mod -w /src golang:1.25 go test -race ./...
+```
 
 ## Границы
 
