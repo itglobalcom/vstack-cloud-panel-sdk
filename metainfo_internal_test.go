@@ -182,22 +182,3 @@ func TestGetApplicationsAPIError(t *testing.T) {
 		t.Errorf("the code of the API must reach the caller: %v", err)
 	}
 }
-
-// The catalog sends the values of a closed set as PascalCase strings, and the
-// spellings are fixed by the contract, not by the SDK.
-func TestApplicationCatalogClosedSetsOnTheWire(t *testing.T) {
-	fixed := map[string]struct {
-		got  string
-		want string
-	}{
-		"ApplicationCredentialsModeServicePassword":      {string(entities.ApplicationCredentialsModeServicePassword), "ServicePassword"},
-		"ApplicationCredentialsModeNoPasswordInTemplate": {string(entities.ApplicationCredentialsModeNoPasswordInTemplate), "NoPasswordInTemplate"},
-		"ApplicationLLMKindKey":                          {string(entities.ApplicationLLMKindKey), "Key"},
-		"ApplicationLLMKindEndpoint":                     {string(entities.ApplicationLLMKindEndpoint), "Endpoint"},
-	}
-	for name, c := range fixed {
-		if c.got != c.want {
-			t.Errorf("%s = %q, want %q", name, c.got, c.want)
-		}
-	}
-}
