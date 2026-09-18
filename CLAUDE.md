@@ -1,7 +1,7 @@
 # vstack-cloud-panel-sdk
 
-Go SDK к Public API панели (контракт `public-api`, publisher `cloudmng` — см. `workspace.yaml`
-корня workspace). Потребитель SDK внутри workspace — `terraform-provider-vcp`.
+Go SDK к Public API панели (контракт `public-api` — граф контрактов
+`docs/contracts/index.md` репозитория `docs`).
 
 Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сейчас 1.25.0).
 Зависимости: stdlib + `golang.org/x/crypto`. Новые внешние зависимости — не добавлять без
@@ -40,7 +40,9 @@ Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сей
 
 - JSON-теги — `snake_case`, как в контракте publisher'а; опциональные с `,omitempty`.
 - Go-имена идиоматичные, с сохранением аббревиатур: `ID`, `GPUSupported`, `NICHotRemove`, `MinGB`.
-- В одном файле: сущность + `CreateXRequest`/`UpdateXRequest` + доменные typed-константы.
+- В одном файле: сущность + `CreateXRequest`/`UpdateXRequest` + доменные константы.
+- Закрытое множество значений контракта — именованный строковый тип и константы
+  `<Тип><Значение>`; поле несёт этот тип, а не `string`.
 - `Validate() error` — на указателе request-структуры.
 - Doc-комментарий над каждым экспортируемым типом; где важны единицы измерения или
   неочевидная семантика контракта — комментарий у поля.
@@ -100,14 +102,14 @@ go build ./...
 go test -race ./...
 ```
 
-Локально: `make fmt`, `make vet`, `make test` (без `-race` — race проверяет CI, перед
-пушем прогоняй `go test -race ./...`). Внешних линтеров нет.
+Локально: `make fmt`, `make vet`, `make test`. `-race` держит CI. Внешних линтеров нет.
 
 ## Границы
 
-- Контракт `public-api` определяет publisher `cloudmng`; SDK его только потребляет —
-  расхождение имени/типа поля правится в SDK, а не «дополняется» своей моделью.
-- Межрепозиторные зависимости описаны только в `workspace.yaml` корня — не дублировать их здесь.
+- Контракт `public-api` SDK только потребляет — расхождение имени/типа поля правится
+  в SDK, а не «дополняется» своей моделью.
+- Межрепозиторные зависимости описаны только в графе контрактов `docs/contracts/index.md` —
+  не дублировать их здесь.
 - Коммиты — в ветку задачи `<TSK…>`, сообщение начинается с `TSK…`.
 - Новые `.md` без явной задачи не создавать: правила — здесь, описание для людей — `README.md`,
   package-level godoc — `doc.go`.

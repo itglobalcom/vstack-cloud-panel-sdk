@@ -61,7 +61,7 @@ GitLab (`CONTRIBUTING.md`).
   для моделей и их `Validate()`.
 - Gates (`.github/workflows/ci.yml`, версия Go — из `go.mod`): `gofmt -l .` (вывод
   пустой), `go vet ./...`, `go build ./...`, `go test -race ./...`. Локально —
-  `make fmt`, `make vet`, `make test`; `-race` перед пушем прогонять вручную.
+  `make fmt`, `make vet`, `make test`; `-race` держит CI.
   Внешних линтеров нет.
 - Done: гейты зелёные; у каждого нового метода есть пример в `examples/` и строка
   в `README.md`; асинхронная операция имеет пару `…AndWait`; изменение поверхности
