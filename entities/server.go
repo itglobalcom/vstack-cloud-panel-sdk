@@ -22,7 +22,7 @@ type Server struct {
 	ApplicationIDs []string `json:"application_ids"`
 	// ApplicationInstallations is nil when the response carries no such field and
 	// non-nil empty when it carries an empty list.
-	ApplicationInstallations []ApplicationInstallation `json:"application_installations,omitempty"`
+	ApplicationInstallations []ApplicationInstallation `json:"application_installations"`
 	AffinityGroupID          string                    `json:"affinity_group_id"`
 }
 

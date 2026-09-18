@@ -133,8 +133,7 @@ func runApplicationExample(ctx context.Context, client *sdk.CloudClient) {
 	fmt.Printf("  Login: %s\n", server.Login)
 
 	// The installations block of the server response carries the outcome of every
-	// ordered application. A failed installation is an outcome of a successful
-	// order, not a failure of it.
+	// ordered application.
 	fmt.Println("\n=== Application installations ===")
 	fmt.Printf("Installations: %d\n", len(server.ApplicationInstallations))
 	for _, installation := range server.ApplicationInstallations {

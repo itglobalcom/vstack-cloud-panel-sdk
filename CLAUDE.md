@@ -14,7 +14,8 @@ Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сей
   `logger.go`, `task.go`, `doc.go`. Вложенных пакетов нет.
 - `entities/` — модели, файл зеркалит доменный файл корня (`vmware.go` ↔ `entities/vmware.go`).
 - `examples/` — `package main`, файл на ресурс + диспетчер `examples/main.go` (`make example RESOURCE=…`).
-- тесты — в корне, `<домен>_internal_test.go`, `package sdk`.
+- тест — у владельца артефакта: клиент — корневой `<домен>_internal_test.go` (`package sdk`),
+  модели и их `Validate()` — `entities/<домен>_test.go` (`package entities`).
 
 ## Клиент
 
@@ -66,7 +67,8 @@ Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сей
   `WithPollingInterval(5ms)` + `WithPollingTimeout(2s)` — именно это делает тесты
   `...AndWait`-методов быстрыми и детерминированными. Свой `httptest.NewServer`
   в доменных тестах не поднимать.
-- Файл `<домен>_internal_test.go`, `package sdk` (тестируются и приватные функции).
+- Файл клиентского теста — `<домен>_internal_test.go`, `package sdk` (тестируются
+  и приватные функции).
 - Паттерны: map-driven `cases := map[string]string{…}` для чистых функций; `t.Run` для
   сценариев; разбор контракта — unmarshal реального JSON-литерала в `ListXResponse`
   (проверяет теги без сети); предикаты ошибок — на вручную собранном `*RequestError`.
