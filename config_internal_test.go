@@ -5,13 +5,12 @@ import (
 	"time"
 )
 
-// The wait a base task gets by default is the platform deadline for the
-// synchronous install of one-click applications — 15 minutes. The number is not
-// a tuning knob of the SDK, so it is asserted as a duration and not against the
-// constant itself.
-func TestDefaultPollingTimeoutIsTheInstallDeadline(t *testing.T) {
-	if DefaultPollingTimeout != 15*time.Minute {
-		t.Errorf("DefaultPollingTimeout = %s, want %s", DefaultPollingTimeout, 15*time.Minute)
+// The wait a base task gets by default is the budget the panel gives a vStack
+// task — one hour. The number is not a tuning knob of the SDK, so it is asserted
+// as a duration and not against the constant itself.
+func TestDefaultPollingTimeoutIsTheTaskBudget(t *testing.T) {
+	if DefaultPollingTimeout != 1*time.Hour {
+		t.Errorf("DefaultPollingTimeout = %s, want %s", DefaultPollingTimeout, 1*time.Hour)
 	}
 }
 
@@ -27,7 +26,7 @@ func TestPollingTimeoutDefault(t *testing.T) {
 		"set to zero":                  {[]Option{WithPollingTimeout(0)}, DefaultPollingTimeout},
 		"set to a negative duration":   {[]Option{WithPollingTimeout(-time.Second)}, DefaultPollingTimeout},
 		"set below the default":        {[]Option{WithPollingTimeout(90 * time.Second)}, 90 * time.Second},
-		"set above the default":        {[]Option{WithPollingTimeout(30 * time.Minute)}, 30 * time.Minute},
+		"set above the default":        {[]Option{WithPollingTimeout(90 * time.Minute)}, 90 * time.Minute},
 		"set to the default itself":    {[]Option{WithPollingTimeout(DefaultPollingTimeout)}, DefaultPollingTimeout},
 		"another option set instead":   {[]Option{WithMaxRetries(0)}, DefaultPollingTimeout},
 		"polling interval set instead": {[]Option{WithPollingInterval(time.Second)}, DefaultPollingTimeout},

@@ -9,7 +9,7 @@ All notable changes to this project are documented here. The format follows
 Adds the **vStack server backup** and **one-click application** surfaces — backup
 storages, the backup service of a server and its restore points; the application catalog
 with parameters, applications in a server order, installations in the server response —
-and raises the default wait for a task to 15 minutes (see Changed). Nothing published is
+and raises the default wait for a task to one hour (see Changed). Nothing published is
 removed.
 
 ### Added
@@ -60,7 +60,7 @@ removed.
   `IsApplicationParameterNotDeclared`. All four are 400s, so `IsNotFound` does not cover
   the first; the parameter name of the last two is in `RequestError.ErrorParams` under
   the name `Parameter`.
-- `DefaultPollingTimeout` (15 minutes), the exported default behind
+- `DefaultPollingTimeout` (one hour), the exported default behind
   `Config.PollingTimeout` (see Changed).
 - The `application` example (`make example RESOURCE=application`): it reads the catalog
   of a location, orders a server with an entry, the values of its parameters and a
@@ -73,14 +73,16 @@ removed.
 
 ### Changed
 
-- **The default wait for a task is 15 minutes, up from 2.** This is a change of behaviour
-  for every consumer of the SDK, not only for orders with applications: an `...AndWait` /
-  `Wait*` call left on the default now spends up to 15 minutes on a single task before
-  reporting a timeout, where it used to give up after 2. Code that relied on the shorter
-  wait to fail fast has to set `WithPollingTimeout` itself. The new value is the platform
-  deadline for the synchronous install of one-click applications — a server ordered with
-  applications finishes its create task only once every install has reached a terminal
-  state, and a shorter wait reports a timeout on an order that is still on schedule.
+- **The default wait for a task is one hour, up from 2 minutes.** This is a change of
+  behaviour for every consumer of the SDK, not only for orders with applications: an
+  `...AndWait` / `Wait*` call left on the default now spends up to an hour on a single
+  task before reporting a timeout, where it used to give up after 2 minutes. Code that
+  relied on the shorter wait to fail fast has to set `WithPollingTimeout` itself. The new
+  value is the budget the panel gives a vStack task, inside which the machine is built
+  and, when applications are ordered, installed: the SDK waits for the task, so its
+  patience is that of the task. The default now sits above the VMware floor
+  `VmwareTaskWaitDefaultTimeout` (30 minutes), so VMware waits left on the default run up
+  to an hour too, where they used to stop at 30 minutes.
 - **The two defaults of the same setting are now one.** `NewConfig` applied 2 minutes and
   the normalization of a zero or negative `PollingTimeout` applied 5, so the wait a caller
   got depended on which of the two paths built the config; both now take

@@ -74,7 +74,7 @@ overridden with functional options:
 | --- | --- | --- |
 | `WithTimeout` | `30s` | HTTP request timeout |
 | `WithPollingInterval` | `5s` | Poll interval for `...AndWait` operations |
-| `WithPollingTimeout` | `15m` | Maximum time to wait for a task |
+| `WithPollingTimeout` | `1h` | Maximum time to wait for a task |
 | `WithUserAgent` | `vstack-cloud-panel-go-sdk/…` | Custom `User-Agent` |
 | `WithHTTPClient` | — | Provide a custom `*http.Client` |
 | `WithLogger` | no-op | Logger implementing `Printf(format, ...any)` |
@@ -163,7 +163,7 @@ server, err := client.CreateServerAndWait(ctx, &entities.CreateServerRequest{
 ```
 
 The create task completes only once every installation has reached a terminal state, so
-the wait spans the install; the `15m` default of `WithPollingTimeout` is sized for it.
+the wait spans the install; the `1h` default of `WithPollingTimeout` covers that whole task.
 The server response carries the outcome of every ordered application in
 `ApplicationInstallations` — state, addresses, components, the application sign-in, the
 issued key id and the reason an installation did not succeed. A failed installation is an

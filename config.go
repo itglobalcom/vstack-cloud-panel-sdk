@@ -20,12 +20,12 @@ const (
 // DefaultPollingTimeout is the wait a base "...AndWait" / Wait* call gives a
 // single task before giving up.
 //
-// The value is the platform deadline for the synchronous install of one-click
-// applications — 15 minutes: a server ordered with applications finishes its
-// create task only once every install has reached a terminal state, so a shorter
-// wait reports a timeout on an order that is still on schedule. Base resources
-// ordered without applications settle well inside it.
-const DefaultPollingTimeout = 15 * time.Minute
+// The value is the budget the panel itself gives a vStack task — one hour.
+// Everything a task does happens inside that budget: building the machine and,
+// when applications are ordered, installing them. The SDK waits for the task, so a
+// shorter wait here reports a timeout on a task the panel is still waiting on.
+// Base resources settle well inside it.
+const DefaultPollingTimeout = 1 * time.Hour
 
 // Config holds the configuration for the CloudClient
 type Config struct {
@@ -36,12 +36,11 @@ type Config struct {
 	// PollingTimeout is the maximum time an "...AndWait" / Wait* call spends polling
 	// a single task before giving up.
 	//
-	// VMware operations outrun this default — a rebuild reached ~26 min — so VMware
-	// task waiting does NOT use this value as-is: WaitVmwareTask raises it to
-	// VmwareTaskWaitDefaultTimeout when it is smaller. Setting PollingTimeout above
-	// that floor still wins, which is worth doing for rebuild; setting it below has
+	// VMware task waiting does NOT use this value as-is: WaitVmwareTask raises it to
+	// VmwareTaskWaitDefaultTimeout when it is smaller, so a value below that floor has
 	// no effect on VMware waits (use WaitVmwareTaskWithTimeout to wait for less).
-	// Base resources use this value directly.
+	// DefaultPollingTimeout sits above the floor, so a caller who leaves it alone waits
+	// that hour for VMware too. Base resources use this value directly.
 	PollingTimeout time.Duration
 	UserAgent      string
 	HTTPClient     *http.Client

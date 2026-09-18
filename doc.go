@@ -69,11 +69,12 @@
 // is not empty, application_ids is not applied.
 //
 // The create task completes only once every installation has reached a terminal
-// state, so CreateServerAndWait spans the install; DefaultPollingTimeout is sized
-// for it. The server response carries the outcome of every ordered application in
-// ApplicationInstallations — state, addresses, components, the application
-// sign-in, the issued key id and the reason an installation did not succeed. A
-// failed installation is an outcome of a successful order, not a failure of it.
+// state, so CreateServerAndWait spans the install; DefaultPollingTimeout covers
+// the whole task, install included. The server response carries the outcome of
+// every ordered application in ApplicationInstallations — state, addresses,
+// components, the application sign-in, the issued key id and the reason an
+// installation did not succeed. A failed installation is an outcome of a
+// successful order, not a failure of it.
 //
 // The refusals an order with applications can get have their own predicates:
 // IsApplicationNotFound, IsApplicationRequiredParameterNotSet,
