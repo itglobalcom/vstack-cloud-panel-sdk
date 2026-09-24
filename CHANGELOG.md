@@ -54,7 +54,7 @@ removed.
 - Error codes and predicates for the refusals a server order with applications can get:
   `APICodeApplicationNotFound` (-19053), `APICodeApplicationLLMKeyDisabled` (-19968),
   `APICodeApplicationRequiredParameterNotSet` (-19969) and
-  `APICodeApplicationParameterNotDeclared` (-19981), with `IsApplicationNotFound`,
+  `APICodeApplicationParameterNotDeclared` (-19988), with `IsApplicationNotFound`,
   `IsApplicationLLMKeyDisabled`, `IsApplicationRequiredParameterNotSet` and
   `IsApplicationParameterNotDeclared`. All four are 400s, so `IsNotFound` does not cover
   the first; the parameter name of the last two is in `RequestError.ErrorParams` under

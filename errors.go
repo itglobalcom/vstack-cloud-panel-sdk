@@ -62,7 +62,7 @@ const (
 	// APICodeApplicationParameterNotDeclared — "Application parameter '{1}' is not
 	// declared by the application": the order carries a parameter the catalog entry
 	// does not list; the name is in error_params under the name "Parameter".
-	APICodeApplicationParameterNotDeclared = -19981
+	APICodeApplicationParameterNotDeclared = -19988
 )
 
 // ErrorParam is a single name/value pair from an API error's error_params block.
@@ -213,7 +213,7 @@ func IsApplicationRequiredParameterNotSet(err error) bool {
 }
 
 // IsApplicationParameterNotDeclared reports whether err is the API "application
-// parameter is not declared by the application" error (-19981);
+// parameter is not declared by the application" error (-19988);
 // RequestError.ErrorParams carries the name of every undeclared parameter.
 func IsApplicationParameterNotDeclared(err error) bool {
 	return HasAPICode(err, APICodeApplicationParameterNotDeclared)

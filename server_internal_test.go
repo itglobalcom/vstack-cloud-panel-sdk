@@ -255,7 +255,7 @@ func TestApplicationOrderErrorPredicates(t *testing.T) {
 		"APICodeApplicationNotFound":                {APICodeApplicationNotFound, -19053},
 		"APICodeApplicationLLMKeyDisabled":          {APICodeApplicationLLMKeyDisabled, -19968},
 		"APICodeApplicationRequiredParameterNotSet": {APICodeApplicationRequiredParameterNotSet, -19969},
-		"APICodeApplicationParameterNotDeclared":    {APICodeApplicationParameterNotDeclared, -19981},
+		"APICodeApplicationParameterNotDeclared":    {APICodeApplicationParameterNotDeclared, -19988},
 	}
 	for name, c := range fixed {
 		if c.got != c.want {
@@ -337,7 +337,7 @@ func TestCreateServerApplicationParameterRefusal(t *testing.T) {
 		},
 		"parameter is not declared": {
 			`{"errors":[
-				{"code":-19981,"message":"Application parameter 'N8N_TIMEZONE' is not declared by the application","error_params":[{"name":"Parameter","value":"N8N_TIMEZONE"}]}
+				{"code":-19988,"message":"Application parameter 'N8N_TIMEZONE' is not declared by the application","error_params":[{"name":"Parameter","value":"N8N_TIMEZONE"}]}
 			]}`,
 			IsApplicationParameterNotDeclared,
 			[]string{"N8N_TIMEZONE"},
