@@ -15,16 +15,16 @@ func TestBackupScheduleValidate(t *testing.T) {
 	}{
 		{"daily at midnight", BackupSchedule{Hour: 0, Minute: 0, Daily: daily}, false},
 		{"all rules", BackupSchedule{Hour: 23, Minute: 59, Daily: daily,
-			Weekly:  &BackupWeeklyRule{BackupRule: BackupRule{Keep: 4, BackupStorageID: 3}, Weekday: 1},
+			Weekly:  &BackupWeeklyRule{BackupRule: BackupRule{Keep: 4, BackupStorageID: 3}, Weekday: BackupWeekdayMonday},
 			Monthly: &BackupMonthlyRule{BackupRule: BackupRule{Keep: 12, BackupStorageID: 4}, DayOfMonth: "1"}}, false},
 		{"hour out of range", BackupSchedule{Hour: 24, Daily: daily}, true},
 		{"negative minute", BackupSchedule{Minute: -1, Daily: daily}, true},
 		{"minute out of range", BackupSchedule{Minute: 60, Daily: daily}, true},
 		{"no rules", BackupSchedule{Hour: 2}, true},
 		{"daily without storage", BackupSchedule{Daily: &BackupRule{Keep: 7}}, true},
-		{"weekly without storage", BackupSchedule{Weekly: &BackupWeeklyRule{BackupRule: BackupRule{Keep: 4}, Weekday: 1}}, true},
-		{"weekday zero", BackupSchedule{Weekly: &BackupWeeklyRule{BackupRule: BackupRule{Keep: 4, BackupStorageID: 3}}}, true},
-		{"weekday eight", BackupSchedule{Weekly: &BackupWeeklyRule{BackupRule: BackupRule{Keep: 4, BackupStorageID: 3}, Weekday: 8}}, true},
+		{"weekly without storage", BackupSchedule{Weekly: &BackupWeeklyRule{BackupRule: BackupRule{Keep: 4}, Weekday: BackupWeekdayMonday}}, true},
+		{"weekday empty", BackupSchedule{Weekly: &BackupWeeklyRule{BackupRule: BackupRule{Keep: 4, BackupStorageID: 3}}}, true},
+		{"weekday unknown", BackupSchedule{Weekly: &BackupWeeklyRule{BackupRule: BackupRule{Keep: 4, BackupStorageID: 3}, Weekday: "Monday"}}, true},
 		{"monthly without storage", BackupSchedule{Monthly: &BackupMonthlyRule{BackupRule: BackupRule{Keep: 12}, DayOfMonth: "1"}}, true},
 		{"monthly without day", BackupSchedule{Monthly: &BackupMonthlyRule{BackupRule: BackupRule{Keep: 12, BackupStorageID: 4}}}, true},
 	}
@@ -87,6 +87,15 @@ func TestParseServerBackupResponse(t *testing.T) {
 	}
 	if m := backup.Schedule.Monthly; m == nil || m.DayOfMonth != BackupDayOfMonthLast || m.BackupStorageID != 4 || m.Keep != 12 {
 		t.Errorf("monthly = %+v, want keep 12 on storage 4 on day last", m)
+	}
+
+	var weekly ServerBackup
+	if err := json.Unmarshal([]byte(`{"enabled":true,"schedule":{"hour":2,"minute":0,
+		"weekly":{"keep":4,"backup_storage_id":3,"weekday":"sunday"}}}`), &weekly); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if weekly.Schedule == nil || weekly.Schedule.Weekly == nil || weekly.Schedule.Weekly.Weekday != BackupWeekdaySunday {
+		t.Errorf("backup = %+v, want a weekly rule on sunday", weekly)
 	}
 
 	var legacy ServerBackup

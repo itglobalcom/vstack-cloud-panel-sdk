@@ -22,7 +22,7 @@ func testBackupSchedule() *entities.BackupSchedule {
 		Hour:   0,
 		Minute: 30,
 		Daily:  &entities.BackupRule{Keep: 7, BackupStorageID: 3},
-		Weekly: &entities.BackupWeeklyRule{BackupRule: entities.BackupRule{Keep: 4, BackupStorageID: 3}, Weekday: 7},
+		Weekly: &entities.BackupWeeklyRule{BackupRule: entities.BackupRule{Keep: 4, BackupStorageID: 3}, Weekday: entities.BackupWeekdaySunday},
 	}
 }
 
@@ -130,7 +130,7 @@ func TestBackupOperationRequests(t *testing.T) {
 			},
 			wantVerb: http.MethodPost,
 			wantPath: "/api/v1/servers/l1s42/backup",
-			wantBody: `{"hour":0,"minute":30,"daily":{"keep":7,"backup_storage_id":3},"weekly":{"keep":4,"backup_storage_id":3,"weekday":7}}`,
+			wantBody: `{"hour":0,"minute":30,"daily":{"keep":7,"backup_storage_id":3},"weekly":{"keep":4,"backup_storage_id":3,"weekday":"sunday"}}`,
 		},
 		{
 			name:     "update",
@@ -140,7 +140,7 @@ func TestBackupOperationRequests(t *testing.T) {
 			},
 			wantVerb: http.MethodPut,
 			wantPath: "/api/v1/servers/l1s42/backup",
-			wantBody: `{"hour":0,"minute":30,"daily":{"keep":7,"backup_storage_id":3},"weekly":{"keep":4,"backup_storage_id":3,"weekday":7}}`,
+			wantBody: `{"hour":0,"minute":30,"daily":{"keep":7,"backup_storage_id":3},"weekly":{"keep":4,"backup_storage_id":3,"weekday":"sunday"}}`,
 		},
 		{
 			name:     "disable",

@@ -21,6 +21,29 @@ const (
 	BackupRetentionRuleMonthly = "monthly"
 )
 
+// BackupWeekday is the day of week of a weekly backup rule.
+type BackupWeekday string
+
+const (
+	BackupWeekdayMonday    BackupWeekday = "monday"
+	BackupWeekdayTuesday   BackupWeekday = "tuesday"
+	BackupWeekdayWednesday BackupWeekday = "wednesday"
+	BackupWeekdayThursday  BackupWeekday = "thursday"
+	BackupWeekdayFriday    BackupWeekday = "friday"
+	BackupWeekdaySaturday  BackupWeekday = "saturday"
+	BackupWeekdaySunday    BackupWeekday = "sunday"
+)
+
+// IsValid reports whether the weekday is one of the BackupWeekday constants.
+func (d BackupWeekday) IsValid() bool {
+	switch d {
+	case BackupWeekdayMonday, BackupWeekdayTuesday, BackupWeekdayWednesday, BackupWeekdayThursday,
+		BackupWeekdayFriday, BackupWeekdaySaturday, BackupWeekdaySunday:
+		return true
+	}
+	return false
+}
+
 // BackupDayOfMonthLast is the BackupMonthlyRule.DayOfMonth value for the last
 // day of the month.
 const BackupDayOfMonthLast = "last"
@@ -96,8 +119,7 @@ type BackupRule struct {
 // BackupWeeklyRule is a weekly schedule rule.
 type BackupWeeklyRule struct {
 	BackupRule
-	// Weekday is the ISO day of week: 1 is Monday, 7 is Sunday.
-	Weekday int `json:"weekday"`
+	Weekday BackupWeekday `json:"weekday"`
 }
 
 // BackupMonthlyRule is a monthly schedule rule.
@@ -126,8 +148,8 @@ func (r *BackupSchedule) Validate() error {
 		if r.Weekly.BackupStorageID <= 0 {
 			return fmt.Errorf("weekly backup storage ID must be greater than 0")
 		}
-		if r.Weekly.Weekday < 1 || r.Weekly.Weekday > 7 {
-			return fmt.Errorf("weekly backup weekday must be between 1 and 7")
+		if !r.Weekly.Weekday.IsValid() {
+			return fmt.Errorf("weekly backup weekday must be a day name from monday to sunday")
 		}
 	}
 	if r.Monthly != nil {
