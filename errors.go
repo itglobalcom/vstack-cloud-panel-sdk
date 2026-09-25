@@ -117,6 +117,17 @@ func IsTaskFailed(err error) bool {
 	return errors.Is(err, ErrTaskFailed)
 }
 
+// ErrBackupRestorePointFailed — a sentinel for "the task of a manual backup copy
+// completed, and the platform failed to take the copy": the outcome of a copy is
+// the state of its restore point (failed), not the state of the task.
+var ErrBackupRestorePointFailed = errors.New("backup restore point failed")
+
+// IsBackupRestorePointFailed reports whether err is a failed backup copy (see
+// ErrBackupRestorePointFailed).
+func IsBackupRestorePointFailed(err error) bool {
+	return errors.Is(err, ErrBackupRestorePointFailed)
+}
+
 // IsNotFound reports whether err means the requested object does not exist:
 // either an HTTP 404 from the API or a semantic not-found (see ErrNotFound).
 //

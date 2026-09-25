@@ -37,6 +37,9 @@ type CreateServerRequest struct {
 	Tags             []string      `json:"tags,omitempty"`
 	AffinityGroupID  string        `json:"affinity_group_id,omitempty"`
 	ServerInitScript string        `json:"server_init_script,omitempty"`
+	// Backup enables the backup service with this schedule once the server is
+	// created; nil creates the server without backup.
+	Backup *BackupSchedule `json:"backup,omitempty"`
 }
 
 // VolumeSpec specifies volume configuration for server creation
@@ -115,6 +118,12 @@ func (r *CreateServerRequest) Validate() error {
 	}
 	if !hasBootVolume {
 		return fmt.Errorf("boot volume is required")
+	}
+
+	if r.Backup != nil {
+		if err := r.Backup.Validate(); err != nil {
+			return fmt.Errorf("invalid backup: %w", err)
+		}
 	}
 
 	return nil
