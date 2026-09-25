@@ -115,7 +115,7 @@ The client exposes methods for the following resources:
 ### Public API coverage
 
 The SDK's scope is every Public API operation except the Kubernetes section:
-all **132 of those operations** are implemented.
+all **143 of those operations** are implemented.
 
 One of them depends on the platform deployment. `PUT
 /api/v1/vmware/networks/{id}/edge/bandwidth` (`UpdateVmwareEdgeBandwidth`) applies
