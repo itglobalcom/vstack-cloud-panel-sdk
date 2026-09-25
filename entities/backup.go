@@ -21,6 +21,10 @@ const (
 	BackupRetentionRuleMonthly = "monthly"
 )
 
+// BackupDayOfMonthLast is the BackupMonthlyRule.DayOfMonth value for the last
+// day of the month.
+const BackupDayOfMonthLast = "last"
+
 // BackupStorageCatalog lists the backup storages available to a server (or to a
 // server order) together with the partner's schedule limits.
 type BackupStorageCatalog struct {
@@ -64,7 +68,8 @@ type BackupRuleLimits struct {
 // ServerBackup is the state of the backup service of a server.
 type ServerBackup struct {
 	Enabled bool `json:"enabled"`
-	// Schedule is nil while the service is not enabled.
+	// Schedule is nil while the service is not enabled, and also for an enabled
+	// service of a server that has no schedule (the legacy backup model).
 	Schedule *BackupSchedule `json:"schedule,omitempty"`
 }
 
@@ -98,7 +103,8 @@ type BackupWeeklyRule struct {
 // BackupMonthlyRule is a monthly schedule rule.
 type BackupMonthlyRule struct {
 	BackupRule
-	// DayOfMonth is the day of month the copy is taken on, as the API spells it.
+	// DayOfMonth is the day of month the copy is taken on: "1" to "28" or
+	// BackupDayOfMonthLast.
 	DayOfMonth string `json:"day_of_month"`
 }
 
