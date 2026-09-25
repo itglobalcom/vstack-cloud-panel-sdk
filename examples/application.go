@@ -264,8 +264,11 @@ func printApplicationInstallation(installation entities.ApplicationInstallation)
 			component.Name, component.Kind, component.ObservedStatus, component.Address)
 	}
 	if installation.AppLogin != "" {
-		fmt.Printf("      application login: %s / password: %s\n",
-			installation.AppLogin, installation.AppPassword)
+		password := "not set"
+		if installation.AppPassword != "" {
+			password = "****"
+		}
+		fmt.Printf("      application login: %s / password: %s\n", installation.AppLogin, password)
 	}
 	if installation.LLMKeyID != "" {
 		fmt.Printf("      language model key: %s\n", installation.LLMKeyID)
