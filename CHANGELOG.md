@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **vStack server backup**: the backup storages available to a server order
+  (`GetBackupStorageList`) and to a server (`GetServerBackupStorages`) together with
+  the partner's schedule limits; the backup service of a server — read
+  (`GetServerBackup`), enable, update the schedule and disable (the copies are
+  deleted with the service); restore points — list, a manual copy, restore over the
+  server, restore into a new server nearby and delete. Every mutating operation has
+  its `...AndWait` variant; `CreateServerBackupRestorePointAndWait` returns the new
+  restore point.
+- `Backup` on `CreateServerRequest`: a server order enables the backup service with
+  the given schedule.
+- `ErrBackupRestorePointFailed` and `IsBackupRestorePointFailed`: the task of a manual
+  copy completes even when the platform fails to take the copy, and
+  `CreateServerBackupRestorePointAndWait` reports such a copy with this error.
+
 ## [1.2.0] - 2026-09-10
 
 Adds support for the **VMware Cloud** service and brings the base task model up to

@@ -103,6 +103,7 @@ The client exposes methods for the following resources:
 - **Servers** — create, resize (PUT/PATCH), power operations, delete
 - **Networks** & **server NICs**
 - **Volumes** & **snapshots**
+- **Server backup** — backup storages, the backup service with its schedule, restore points (manual copy, restore over the server and nearby, delete)
 - **SSH keys**
 - **DNS** zones and records
 - **Gateways**
@@ -114,7 +115,7 @@ The client exposes methods for the following resources:
 ### Public API coverage
 
 The SDK's scope is every Public API operation except the Kubernetes section:
-all **132 of those operations** are implemented.
+all **143 of those operations** are implemented.
 
 One of them depends on the platform deployment. `PUT
 /api/v1/vmware/networks/{id}/edge/bandwidth` (`UpdateVmwareEdgeBandwidth`) applies
@@ -169,6 +170,24 @@ one). Use the `GetVmware*List` family. `GetVMwareDiskTypes` and
 existing code keeps compiling: `/vmware/disk-types` and `/vmware/storage-profiles`
 exist only under the AdminV2 prefix, so through the Public API they answer 404.
 
+### Server backup
+
+| Method | Operation |
+|---|---|
+| `GetBackupStorageList` | backup storages and schedule limits for a server order in a location (optionally for an image) |
+| `GetServerBackupStorages` | backup storages and schedule limits for an existing server |
+| `GetServerBackup` | state of the backup service of a server and its schedule |
+| `EnableServerBackup` / `EnableServerBackupAndWait` | enable the backup service with a schedule |
+| `UpdateServerBackup` / `UpdateServerBackupAndWait` | replace the backup schedule |
+| `DisableServerBackup` / `DisableServerBackupAndWait` | disable the backup service together with the copies of the server |
+| `GetServerBackupRestorePoints` | restore points of a server |
+| `CreateServerBackupRestorePoint` / `CreateServerBackupRestorePointAndWait` | take a manual copy; a copy the platform failed to take matches `sdk.IsBackupRestorePointFailed` |
+| `RestoreServerBackupRestorePoint` / `RestoreServerBackupRestorePointAndWait` | restore a server over itself from a restore point |
+| `RestoreServerBackupRestorePointNearby` / `RestoreServerBackupRestorePointNearbyAndWait` | restore a restore point into a new server |
+| `DeleteServerBackupRestorePoint` / `DeleteServerBackupRestorePointAndWait` | delete a restore point |
+
+`CreateServerRequest.Backup` enables the backup service with a schedule as part of a server order.
+
 ## Error handling
 
 API errors are returned as `*sdk.RequestError`, which carries the HTTP status,
@@ -193,7 +212,7 @@ make example RESOURCE=meta  # read-only, safe to run first
 ```
 
 Available `RESOURCE` values: `meta`, `vmware`, `server`, `network`, `ssh`, `affinity`,
-`dns`, `gateway`, `volume`, `snapshot`, `server_nic`, `race`.
+`dns`, `gateway`, `volume`, `snapshot`, `backup`, `server_nic`, `race`.
 
 > **Note:** examples other than `meta` and `vmware` create and delete real (billable) resources.
 > Use a dedicated test project.
@@ -209,6 +228,14 @@ it needs, removes it afterwards, and prints an ok/failed/skipped tally. They acc
 | `VMWARE_NETWORK_CIDR` | `192.168.94.0` | `/24` base address; the examples bump the third octet |
 | `VMWARE_KEEP` | unset | `1` leaves the created resources in place |
 | `VMWARE_SKIP_LONG` | unset | `1` skips the copy and rebuild steps (~55 min of `vmware_server`) |
+
+`backup` accepts:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `BACKUP_LOCATION` | `kz` | location `tech_title` of the server being created |
+| `BACKUP_IMAGE_ID` | `Debian-12-X64` | image of the server being created |
+| `BACKUP_RESTORE` | unset | `1` runs the restore over the server and nearby |
 
 `vmware_server` takes roughly 100 minutes end to end because rebuild alone runs ~20 minutes and
 both of its forms are exercised; `VMWARE_SKIP_LONG=1` brings it down to about 40.
