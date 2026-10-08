@@ -45,6 +45,24 @@ const (
 	// available VDC that supports nested hypervisor": the capability is reported
 	// up front by VmwareLocation.NestedHypervisorSupported.
 	APICodeVmwareNestedHypervisorNotSupportedInLocation = -8155
+	// APICodeApplicationNotFound — "Application not found": the applications
+	// block of a server order names an application the project catalog does not
+	// offer — an unknown or inactive one, or an empty name. Reported once for the
+	// whole order, however many positions failed.
+	APICodeApplicationNotFound = -19053
+	// APICodeApplicationLLMKeyDisabled — "Language model service key issuing is
+	// disabled for this One Click App: clear the flag": the order asked for a
+	// platform language model key for an application offered without one.
+	// Reported once for the whole order.
+	APICodeApplicationLLMKeyDisabled = -19968
+	// APICodeApplicationRequiredParameterNotSet — "Required application parameter
+	// '{1}' has no value": one error per missing parameter, with the parameter name
+	// in error_params under the name "Parameter".
+	APICodeApplicationRequiredParameterNotSet = -19969
+	// APICodeApplicationParameterNotDeclared — "Application parameter '{1}' is not
+	// declared by the application": the order carries a parameter the catalog entry
+	// does not list; the name is in error_params under the name "Parameter".
+	APICodeApplicationParameterNotDeclared = -19988
 )
 
 // ErrorParam is a single name/value pair from an API error's error_params block.
@@ -169,6 +187,36 @@ func IsNetworkInUse(err error) bool {
 // error (-8049) — the 400 returned for an unknown location_id filter.
 func IsInvalidLocation(err error) bool {
 	return HasAPICode(err, APICodeDCLocationDoesNotExist)
+}
+
+// IsApplicationNotFound reports whether err is the API "application not found"
+// error (-19053) — the 400 a server order gets when its applications block names
+// an application the project catalog does not offer. Being a 400 and not a 404,
+// it is not covered by IsNotFound.
+func IsApplicationNotFound(err error) bool {
+	return HasAPICode(err, APICodeApplicationNotFound)
+}
+
+// IsApplicationLLMKeyDisabled reports whether err is the API "language model
+// service key issuing is disabled for this One Click App" error (-19968) — the
+// order set issue_llm_key for an application offered without a platform key;
+// entities.Application.LLMKeyEnabled reports the offer up front.
+func IsApplicationLLMKeyDisabled(err error) bool {
+	return HasAPICode(err, APICodeApplicationLLMKeyDisabled)
+}
+
+// IsApplicationRequiredParameterNotSet reports whether err is the API "required
+// application parameter has no value" error (-19969); RequestError.ErrorParams
+// carries the name of every parameter left without a value.
+func IsApplicationRequiredParameterNotSet(err error) bool {
+	return HasAPICode(err, APICodeApplicationRequiredParameterNotSet)
+}
+
+// IsApplicationParameterNotDeclared reports whether err is the API "application
+// parameter is not declared by the application" error (-19988);
+// RequestError.ErrorParams carries the name of every undeclared parameter.
+func IsApplicationParameterNotDeclared(err error) bool {
+	return HasAPICode(err, APICodeApplicationParameterNotDeclared)
 }
 
 // IsVmwareNoFreePublicNetwork reports whether err is the VMware "there is no free

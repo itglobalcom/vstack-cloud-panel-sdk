@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Adds the **vStack server backup** and **one-click application** surfaces — backup
+storages, the backup service of a server and its restore points; the application catalog
+with parameters, applications in a server order, installations in the server response —
+and raises the default wait for a task to one hour (see Changed). Nothing published is
+removed.
+
 ### Added
 
 - **vStack server backup**: the backup storages available to a server order
@@ -21,6 +27,71 @@ All notable changes to this project are documented here. The format follows
 - `ErrBackupRestorePointFailed` and `IsBackupRestorePointFailed`: the task of a manual
   copy completes even when the platform fails to take the copy, and
   `CreateServerBackupRestorePointAndWait` reports such a copy with this error.
+- **Application catalog with parameters.** `entities.Application` carries what an entry
+  asks for and what it offers: `Parameters` (`[]entities.ApplicationParameter` — `Name`,
+  `Required`, `Default`, `Secret` and `LLMKind`, the role of the parameter in language
+  model access), `CredentialsMode` (the class of sign-in: `ServicePassword`,
+  `NoPasswordInTemplate`), `RecommendedCPU`, `RecommendedRamMB`, `RecommendedStorageMB`,
+  `LLMKeyEnabled` (the platform can issue a language model key for this application),
+  `Category` and `DocumentationURL`. `Images` and `GetApplications` are unchanged;
+  a response that carries no collection decodes to an empty list.
+- **Applications with parameters in a server order.**
+  `entities.CreateServerRequest.Applications` (`[]entities.ApplicationSpec`) carries a
+  catalog entry id, the parameter values by name and `IssueLLMKey`, the request for a
+  platform language model key. It supersedes the flat `ApplicationIDs`, which stays
+  published: while `Applications` is not empty, `application_ids` is not applied.
+  `Validate()` rejects a position without an id and a parameter with an empty name, and
+  names the position in the message.
+- **Installations in the server response.** `entities.Server.ApplicationInstallations`
+  (`[]entities.ApplicationInstallation`) is the outcome of every application ordered with
+  the server: `State` (`Installing`, `Installed`, `Failed`), `OutcomeReason`,
+  `InstalledAt`, `Addresses`, `Components` (name, `Kind`, the platform's
+  `ObservedStatus`, address), the application sign-in (`AppLogin`, `AppPassword`) and
+  `LLMKeyID`. A failed installation is an outcome of a successful order: the create task
+  completes once every install has reached a terminal state, whichever it is. The field
+  is `nil` when the response carries no such block and non-nil empty when it carries an
+  empty one.
+- Error codes and predicates for the refusals a server order with applications can get:
+  `APICodeApplicationNotFound` (-19053), `APICodeApplicationLLMKeyDisabled` (-19968),
+  `APICodeApplicationRequiredParameterNotSet` (-19969) and
+  `APICodeApplicationParameterNotDeclared` (-19988), with `IsApplicationNotFound`,
+  `IsApplicationLLMKeyDisabled`, `IsApplicationRequiredParameterNotSet` and
+  `IsApplicationParameterNotDeclared`. All four are 400s, so `IsNotFound` does not cover
+  the first; the parameter name of the last two is in `RequestError.ErrorParams` under
+  the name `Parameter`.
+- `DefaultPollingTimeout` (one hour), the exported default behind
+  `Config.PollingTimeout` (see Changed).
+- The `application` example (`make example RESOURCE=application`): it reads the catalog
+  of a location, orders a server with an entry, the values of its parameters and a
+  language model key where the entry offers one, prints the installations of the server
+  response and removes the server afterwards. `APPLICATION_LOCATION` and `APPLICATION_ID`
+  choose where and what to order.
+- Unit tests for the catalog and server domains: the parse of a real catalog response and
+  of a server response with installations, the `Validate()` refusals of an order with
+  applications, the wire shape of that order, and the four new error predicates.
+
+### Changed
+
+- **The default wait for a task is one hour, up from 2 minutes.** This is a change of
+  behaviour for every consumer of the SDK, not only for orders with applications: an
+  `...AndWait` / `Wait*` call left on the default now spends up to an hour on a single
+  task before reporting a timeout, where it used to give up after 2 minutes. Code that
+  relied on the shorter wait to fail fast has to set `WithPollingTimeout` itself. The new
+  value is the budget the panel gives a vStack task, inside which the machine is built
+  and, when applications are ordered, installed: the SDK waits for the task, so its
+  patience is that of the task. The default now sits above the VMware floor
+  `VmwareTaskWaitDefaultTimeout` (30 minutes), so VMware waits left on the default run up
+  to an hour too, where they used to stop at 30 minutes. The same default bounds the
+  deletion polling of `DeleteDomainAndWait` and `DeleteDomainRecordAndWait`, which waits
+  for a 404 rather than for a task: left on the default it now polls for up to an hour
+  before reporting the domain or record still there.
+- **The two defaults of the same setting are now one.** `NewConfig` applied 2 minutes and
+  the normalization of a zero or negative `PollingTimeout` applied 5, so the wait a caller
+  got depended on which of the two paths built the config; both now take
+  `DefaultPollingTimeout`. `WithPollingTimeout` and the VMware floor
+  `VmwareTaskWaitDefaultTimeout` (30 minutes) are unchanged: a `PollingTimeout` below that
+  floor is still raised for VMware waits.
+
 
 ## [1.2.0] - 2026-09-10
 

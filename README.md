@@ -74,7 +74,7 @@ overridden with functional options:
 | --- | --- | --- |
 | `WithTimeout` | `30s` | HTTP request timeout |
 | `WithPollingInterval` | `5s` | Poll interval for `...AndWait` operations |
-| `WithPollingTimeout` | `2m` | Maximum time to wait for a task |
+| `WithPollingTimeout` | `1h` | Maximum time to wait for a task |
 | `WithUserAgent` | `vstack-cloud-panel-go-sdk/…` | Custom `User-Agent` |
 | `WithHTTPClient` | — | Provide a custom `*http.Client` |
 | `WithLogger` | no-op | Logger implementing `Printf(format, ...any)` |
@@ -131,6 +131,48 @@ Most mutating operations that trigger a background task provide an `...AndWait` 
 ```go
 server, err := client.CreateServerAndWait(ctx, &entities.CreateServerRequest{ /* ... */ })
 ```
+
+### One-click applications
+
+`GetApplications` reads the application catalog the project is offered in a location.
+An entry names the parameters it asks for (which are required, which are secret, which
+belong to the language model access), the class of sign-in it offers, the resources it is
+recommended to run on, its category and documentation link, and whether a platform
+language model key can be issued for it:
+
+```go
+applications, err := client.GetApplications(ctx, locationID)
+```
+
+A server is ordered with applications through `Applications`, one
+`entities.ApplicationSpec` per catalog entry carrying the parameter values by name. It
+supersedes the flat `ApplicationIDs`: while it is not empty, `application_ids` is not
+applied.
+
+```go
+server, err := client.CreateServerAndWait(ctx, &entities.CreateServerRequest{
+	// ...
+	Applications: []entities.ApplicationSpec{
+		{
+			ID:          "n8n",
+			Parameters:  map[string]string{"N8N_HOST": "n8n.example.com"},
+			IssueLLMKey: true,
+		},
+	},
+})
+```
+
+The create task completes only once every installation has reached a terminal state, so
+the wait spans the install; the `1h` default of `WithPollingTimeout` covers that whole task.
+The server response carries the outcome of every ordered application in
+`ApplicationInstallations` — state, addresses, components, the application sign-in, the
+issued key id and the reason an installation did not succeed. A failed installation is an
+outcome of a successful order, not a failure of it.
+
+The refusals an order with applications can get have their own predicates —
+`sdk.IsApplicationNotFound`, `sdk.IsApplicationRequiredParameterNotSet`,
+`sdk.IsApplicationParameterNotDeclared` and `sdk.IsApplicationLLMKeyDisabled`; the
+parameter names the last two point at are in `RequestError.ErrorParams`.
 
 ### VMware catalog
 
@@ -211,11 +253,21 @@ cp .env.example .env        # then fill in API_KEY and API_URL
 make example RESOURCE=meta  # read-only, safe to run first
 ```
 
-Available `RESOURCE` values: `meta`, `vmware`, `server`, `network`, `ssh`, `affinity`,
-`dns`, `gateway`, `volume`, `snapshot`, `backup`, `server_nic`, `race`.
+Available `RESOURCE` values: `meta`, `vmware`, `server`, `application`, `network`, `ssh`,
+`affinity`, `dns`, `gateway`, `volume`, `snapshot`, `backup`, `server_nic`, `race`.
 
 > **Note:** examples other than `meta` and `vmware` create and delete real (billable) resources.
 > Use a dedicated test project.
+
+`application` walks the one-click scenario end to end: it reads the catalog of a location,
+orders a server with the chosen entry, the values of its parameters and a language model key
+where the entry offers one, prints the installations the server response carries, and removes
+the server afterwards. It accepts:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `APPLICATION_LOCATION` | `kz` | location to order in |
+| `APPLICATION_ID` | first entry of the catalog | catalog entry to order |
 
 `vmware_meta`, `vmware_server` and `vmware_network` between them call every exported `Vmware*`
 method, each in both forms (raw call plus explicit wait, and `...AndWait`). Each provisions what

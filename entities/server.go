@@ -4,42 +4,59 @@ import "fmt"
 
 // Server represents a server instance
 type Server struct {
-	ID              string   `json:"id"`
-	LocationID      string   `json:"location_id"`
-	CPU             int      `json:"cpu"`
-	RamMB           int      `json:"ram_mb"`
-	Volumes         []Volume `json:"volumes"`
-	NICs            []NIC    `json:"nics"`
-	ImageID         string   `json:"image_id"`
-	IsPowerOn       bool     `json:"is_power_on"`
-	Name            string   `json:"name"`
-	Login           string   `json:"login"`
-	Password        string   `json:"password"`
-	SSHKeyIDs       []int    `json:"ssh_key_ids"`
-	State           string   `json:"state"`
-	Created         string   `json:"created"`
-	Tags            []string `json:"tags"`
-	ApplicationIDs  []string `json:"application_ids"`
-	AffinityGroupID string   `json:"affinity_group_id"`
+	ID             string   `json:"id"`
+	LocationID     string   `json:"location_id"`
+	CPU            int      `json:"cpu"`
+	RamMB          int      `json:"ram_mb"`
+	Volumes        []Volume `json:"volumes"`
+	NICs           []NIC    `json:"nics"`
+	ImageID        string   `json:"image_id"`
+	IsPowerOn      bool     `json:"is_power_on"`
+	Name           string   `json:"name"`
+	Login          string   `json:"login"`
+	Password       string   `json:"password"`
+	SSHKeyIDs      []int    `json:"ssh_key_ids"`
+	State          string   `json:"state"`
+	Created        string   `json:"created"`
+	Tags           []string `json:"tags"`
+	ApplicationIDs []string `json:"application_ids"`
+	// ApplicationInstallations is nil when the response carries no such field and
+	// non-nil empty when it carries an empty list.
+	ApplicationInstallations []ApplicationInstallation `json:"application_installations"`
+	AffinityGroupID          string                    `json:"affinity_group_id"`
 }
 
 // CreateServerRequest represents a request to create a server
 type CreateServerRequest struct {
-	LocationID       string        `json:"location_id"`
-	ImageID          string        `json:"image_id"`
-	CPU              int           `json:"cpu"`
-	RamMB            int           `json:"ram_mb"`
-	Volumes          []VolumeSpec  `json:"volumes"`
-	Networks         []NetworkSpec `json:"networks"`
-	Name             string        `json:"name"`
-	SSHKeyIDs        []int         `json:"ssh_key_ids,omitempty"`
-	ApplicationIDs   []string      `json:"application_ids,omitempty"`
-	Tags             []string      `json:"tags,omitempty"`
-	AffinityGroupID  string        `json:"affinity_group_id,omitempty"`
-	ServerInitScript string        `json:"server_init_script,omitempty"`
+	LocationID     string        `json:"location_id"`
+	ImageID        string        `json:"image_id"`
+	CPU            int           `json:"cpu"`
+	RamMB          int           `json:"ram_mb"`
+	Volumes        []VolumeSpec  `json:"volumes"`
+	Networks       []NetworkSpec `json:"networks"`
+	Name           string        `json:"name"`
+	SSHKeyIDs      []int         `json:"ssh_key_ids,omitempty"`
+	ApplicationIDs []string      `json:"application_ids,omitempty"`
+	// Applications supersedes ApplicationIDs: while it is not empty, application_ids
+	// is not applied.
+	Applications     []ApplicationSpec `json:"applications,omitempty"`
+	Tags             []string          `json:"tags,omitempty"`
+	AffinityGroupID  string            `json:"affinity_group_id,omitempty"`
+	ServerInitScript string            `json:"server_init_script,omitempty"`
 	// Backup enables the backup service with this schedule once the server is
 	// created; nil creates the server without backup.
 	Backup *BackupSchedule `json:"backup,omitempty"`
+}
+
+// ApplicationSpec specifies an application to install on a server being created
+type ApplicationSpec struct {
+	ID string `json:"id"`
+	// Parameters are values by parameter name; the catalog entry names them and
+	// tells which of them are required.
+	Parameters map[string]string `json:"parameters,omitempty"`
+	// IssueLLMKey asks for a platform language model key for the application; it is
+	// accepted only for a catalog entry with LLMKeyEnabled.
+	IssueLLMKey bool `json:"issue_llm_key"`
 }
 
 // VolumeSpec specifies volume configuration for server creation
@@ -85,6 +102,75 @@ const (
 	ServerStateBlocked = "Blocked"
 )
 
+// ApplicationInstallation is the outcome of installing one application on a server
+type ApplicationInstallation struct {
+	ID            string                   `json:"id"`
+	State         ApplicationInstallState  `json:"state"`
+	OutcomeReason ApplicationOutcomeReason `json:"outcome_reason,omitempty"`
+	// InstalledAt is the time of the terminal outcome, a failed installation included.
+	InstalledAt string                 `json:"installed_at,omitempty"`
+	Addresses   []ApplicationAddress   `json:"addresses"`
+	Components  []ApplicationComponent `json:"components"`
+	AppLogin    string                 `json:"app_login,omitempty"`
+	AppPassword string                 `json:"app_password,omitempty"`
+	LLMKeyID    string                 `json:"llm_key_id,omitempty"`
+}
+
+// ApplicationAddress is the address of one service of an installed application
+type ApplicationAddress struct {
+	Service string `json:"service"`
+	Address string `json:"address"`
+}
+
+// ApplicationComponent is one service of the application as of the installation
+type ApplicationComponent struct {
+	Name string                   `json:"name"`
+	Kind ApplicationComponentKind `json:"kind"`
+	// ObservedStatus is a status string of the platform, not a value of a closed set.
+	ObservedStatus string `json:"observed_status,omitempty"`
+	Address        string `json:"address,omitempty"`
+}
+
+// ApplicationInstallState is the state of an application installation
+type ApplicationInstallState string
+
+const (
+	ApplicationInstallStateInstalling ApplicationInstallState = "Installing"
+	ApplicationInstallStateInstalled  ApplicationInstallState = "Installed"
+	ApplicationInstallStateFailed     ApplicationInstallState = "Failed"
+)
+
+// ApplicationOutcomeReason is the reason an installation did not succeed
+type ApplicationOutcomeReason string
+
+const (
+	// ApplicationOutcomeReasonRegistrationFailed — the server was not registered on
+	// the installation platform.
+	ApplicationOutcomeReasonRegistrationFailed ApplicationOutcomeReason = "RegistrationFailed"
+	// ApplicationOutcomeReasonDockerNotReady — the container engine of the server was
+	// not ready.
+	ApplicationOutcomeReasonDockerNotReady ApplicationOutcomeReason = "DockerNotReady"
+	// ApplicationOutcomeReasonServiceCreateFailed — the application service was not
+	// created.
+	ApplicationOutcomeReasonServiceCreateFailed ApplicationOutcomeReason = "ServiceCreateFailed"
+	// ApplicationOutcomeReasonDeployTimeout — the installation did not finish in the
+	// allotted time.
+	ApplicationOutcomeReasonDeployTimeout ApplicationOutcomeReason = "DeployTimeout"
+	// ApplicationOutcomeReasonHostUnreachable — the server was unreachable.
+	ApplicationOutcomeReasonHostUnreachable ApplicationOutcomeReason = "HostUnreachable"
+	// ApplicationOutcomeReasonLLMKeyValueMissing — the language model key was not issued.
+	ApplicationOutcomeReasonLLMKeyValueMissing ApplicationOutcomeReason = "LlmKeyValueMissing"
+)
+
+// ApplicationComponentKind is the kind of an application service
+type ApplicationComponentKind string
+
+const (
+	ApplicationComponentKindWeb      ApplicationComponentKind = "Web"
+	ApplicationComponentKindWorker   ApplicationComponentKind = "Worker"
+	ApplicationComponentKindDatabase ApplicationComponentKind = "Database"
+)
+
 // Validate checks if the create server request is valid
 func (r *CreateServerRequest) Validate() error {
 	if r.LocationID == "" {
@@ -123,6 +209,15 @@ func (r *CreateServerRequest) Validate() error {
 	if r.Backup != nil {
 		if err := r.Backup.Validate(); err != nil {
 			return fmt.Errorf("invalid backup: %w", err)
+		}
+	}
+
+	for i, app := range r.Applications {
+		if app.ID == "" {
+			return fmt.Errorf("applications[%d]: id is required", i)
+		}
+		if _, ok := app.Parameters[""]; ok {
+			return fmt.Errorf("applications[%d]: parameter name is required", i)
 		}
 	}
 
