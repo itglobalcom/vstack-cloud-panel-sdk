@@ -37,4 +37,43 @@ type Application struct {
 	ID         string   `json:"id"`
 	LocationID string   `json:"location_id"`
 	Images     []string `json:"images"`
+	// Category is reported in English only; the catalog does not localize it.
+	Category         string                     `json:"category,omitempty"`
+	DocumentationURL string                     `json:"documentation_url,omitempty"`
+	CredentialsMode  ApplicationCredentialsMode `json:"credentials_mode,omitempty"`
+	// LLMKeyEnabled reports that the application may be ordered with a platform
+	// language model key.
+	LLMKeyEnabled        bool                   `json:"llm_key_enabled"`
+	RecommendedCPU       int                    `json:"recommended_cpu,omitempty"`
+	RecommendedRamMB     int                    `json:"recommended_ram_mb,omitempty"`
+	RecommendedStorageMB int                    `json:"recommended_storage_mb,omitempty"`
+	Parameters           []ApplicationParameter `json:"parameters"`
 }
+
+// ApplicationParameter is a value the application asks for when a server is ordered.
+type ApplicationParameter struct {
+	Name     string `json:"name"`
+	Required bool   `json:"required"`
+	Default  string `json:"default,omitempty"`
+	// Secret marks a value that must not be logged or echoed back.
+	Secret  bool               `json:"secret"`
+	LLMKind ApplicationLLMKind `json:"llm_kind,omitempty"`
+}
+
+// ApplicationCredentialsMode is the class of sign-in the application offers
+type ApplicationCredentialsMode string
+
+const (
+	ApplicationCredentialsModeServicePassword      ApplicationCredentialsMode = "ServicePassword"
+	ApplicationCredentialsModeNoPasswordInTemplate ApplicationCredentialsMode = "NoPasswordInTemplate"
+)
+
+// ApplicationLLMKind is the role of an application parameter in language model access
+type ApplicationLLMKind string
+
+const (
+	// ApplicationLLMKindKey — the parameter carries the language model key.
+	ApplicationLLMKindKey ApplicationLLMKind = "Key"
+	// ApplicationLLMKindEndpoint — the parameter carries the inference address.
+	ApplicationLLMKindEndpoint ApplicationLLMKind = "Endpoint"
+)

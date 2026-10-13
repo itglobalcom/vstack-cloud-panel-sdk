@@ -1,7 +1,7 @@
 # vstack-cloud-panel-sdk
 
-Go SDK к Public API панели (контракт `public-api`, publisher `cloudmng` — см. `workspace.yaml`
-корня workspace). Потребитель SDK внутри workspace — `terraform-provider-vcp`.
+Go SDK к Public API панели (контракт `public-api` — граф контрактов
+`docs/contracts/index.md` репозитория `docs`).
 
 Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сейчас 1.25.0).
 Зависимости: stdlib + `golang.org/x/crypto`. Новые внешние зависимости — не добавлять без
@@ -14,7 +14,8 @@ Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сей
   `logger.go`, `task.go`, `doc.go`. Вложенных пакетов нет.
 - `entities/` — модели, файл зеркалит доменный файл корня (`vmware.go` ↔ `entities/vmware.go`).
 - `examples/` — `package main`, файл на ресурс + диспетчер `examples/main.go` (`make example RESOURCE=…`).
-- тесты — в корне, `<домен>_internal_test.go`, `package sdk`.
+- тест — у владельца артефакта: клиент — корневой `<домен>_internal_test.go` (`package sdk`),
+  модели и их `Validate()` — `entities/<домен>_test.go` (`package entities`).
 
 ## Клиент
 
@@ -40,7 +41,9 @@ Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сей
 
 - JSON-теги — `snake_case`, как в контракте publisher'а; опциональные с `,omitempty`.
 - Go-имена идиоматичные, с сохранением аббревиатур: `ID`, `GPUSupported`, `NICHotRemove`, `MinGB`.
-- В одном файле: сущность + `CreateXRequest`/`UpdateXRequest` + доменные typed-константы.
+- В одном файле: сущность + `CreateXRequest`/`UpdateXRequest` + доменные константы.
+- Закрытое множество значений контракта — именованный строковый тип и константы
+  `<Тип><Значение>`; поле несёт этот тип, а не `string`.
 - `Validate() error` — на указателе request-структуры.
 - Doc-комментарий над каждым экспортируемым типом; где важны единицы измерения или
   неочевидная семантика контракта — комментарий у поля.
@@ -64,7 +67,8 @@ Module `github.com/itglobalcom/vstack-cloud-panel-sdk`, Go по `go.mod` (сей
   `WithPollingInterval(5ms)` + `WithPollingTimeout(2s)` — именно это делает тесты
   `...AndWait`-методов быстрыми и детерминированными. Свой `httptest.NewServer`
   в доменных тестах не поднимать.
-- Файл `<домен>_internal_test.go`, `package sdk` (тестируются и приватные функции).
+- Файл клиентского теста — `<домен>_internal_test.go`, `package sdk` (тестируются
+  и приватные функции).
 - Паттерны: map-driven `cases := map[string]string{…}` для чистых функций; `t.Run` для
   сценариев; разбор контракта — unmarshal реального JSON-литерала в `ListXResponse`
   (проверяет теги без сети); предикаты ошибок — на вручную собранном `*RequestError`.
@@ -100,14 +104,19 @@ go build ./...
 go test -race ./...
 ```
 
-Локально: `make fmt`, `make vet`, `make test` (без `-race` — race проверяет CI, перед
-пушем прогоняй `go test -race ./...`). Внешних линтеров нет.
+Локально: `make fmt`, `make vet`, `make test`. Перед пушем прогоняй `go test -race ./...`;
+на хосте без cgo — контейнером. Внешних линтеров нет.
+
+```
+MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD":/src -v "$(go env GOMODCACHE)":/go/pkg/mod -w /src golang:1.25 go test -race ./...
+```
 
 ## Границы
 
-- Контракт `public-api` определяет publisher `cloudmng`; SDK его только потребляет —
-  расхождение имени/типа поля правится в SDK, а не «дополняется» своей моделью.
-- Межрепозиторные зависимости описаны только в `workspace.yaml` корня — не дублировать их здесь.
+- Контракт `public-api` SDK только потребляет — расхождение имени/типа поля правится
+  в SDK, а не «дополняется» своей моделью.
+- Межрепозиторные зависимости описаны только в графе контрактов `docs/contracts/index.md` —
+  не дублировать их здесь.
 - Коммиты — в ветку задачи `<TSK…>`, сообщение начинается с `TSK…`.
 - Новые `.md` без явной задачи не создавать: правила — здесь, описание для людей — `README.md`,
   package-level godoc — `doc.go`.

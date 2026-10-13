@@ -130,7 +130,7 @@ func (c *CloudClient) CreateVmwareServer(ctx context.Context, req *entities.Vmwa
 // task to complete and returns the created server.
 //
 // Provisioning takes minutes, which is why VMware task waiting has its own
-// timeout floor (VmwareTaskWaitDefaultTimeout) rather than the 2m base
+// timeout floor (VmwareTaskWaitDefaultTimeout) rather than the base
 // PollingTimeout.
 func (c *CloudClient) CreateVmwareServerAndWait(ctx context.Context, req *entities.VmwareCreateServerRequest) (*entities.VmwareServer, error) {
 	order, err := c.CreateVmwareServer(ctx, req)
@@ -334,9 +334,10 @@ func (c *CloudClient) RebuildVmwareServer(ctx context.Context, serverID int, req
 //
 // This is the longest and least predictable operation in the section. Two rebuilds
 // of the same server from the same image, in one run, took 4m40s and 24m30s;
-// earlier measurements gave >12m, ~20m and ~26m. So it fits inside
-// VmwareTaskWaitDefaultTimeout, but ~26m leaves little headroom — pass a larger
-// WithPollingTimeout when calling it.
+// earlier measurements gave >12m, ~20m and ~26m. That fits inside the hour a default
+// PollingTimeout waits; a caller who lowered PollingTimeout waits the
+// VmwareTaskWaitDefaultTimeout floor instead, against which ~26m leaves little
+// headroom — raise it above the floor with WithPollingTimeout.
 //
 // Prefer the two-step form (RebuildVmwareServer, then WaitVmwareTaskWithTimeout)
 // when a lost server would matter: the replacement is created as soon as the POST

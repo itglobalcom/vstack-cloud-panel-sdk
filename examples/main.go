@@ -80,10 +80,14 @@ func main() {
 		runVolumeExample(ctx, client)
 	case "snapshot":
 		runSnapshotExample(ctx, client)
+	case "backup":
+		runBackupExample(ctx, client)
 	case "race":
 		runRaceConditionTest(ctx, client)
 	case "meta":
 		runMetadataExample(ctx, client)
+	case "application":
+		runApplicationExample(ctx, client)
 	case "vmware":
 		runVMwareExample(ctx, client)
 	default:

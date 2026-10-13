@@ -74,7 +74,7 @@ overridden with functional options:
 | --- | --- | --- |
 | `WithTimeout` | `30s` | HTTP request timeout |
 | `WithPollingInterval` | `5s` | Poll interval for `...AndWait` operations |
-| `WithPollingTimeout` | `2m` | Maximum time to wait for a task |
+| `WithPollingTimeout` | `1h` | Maximum time to wait for a task |
 | `WithUserAgent` | `vstack-cloud-panel-go-sdk/…` | Custom `User-Agent` |
 | `WithHTTPClient` | — | Provide a custom `*http.Client` |
 | `WithLogger` | no-op | Logger implementing `Printf(format, ...any)` |
@@ -103,6 +103,7 @@ The client exposes methods for the following resources:
 - **Servers** — create, resize (PUT/PATCH), power operations, delete
 - **Networks** & **server NICs**
 - **Volumes** & **snapshots**
+- **Server backup** — backup storages, the backup service with its schedule, restore points (manual copy, restore over the server and nearby, delete)
 - **SSH keys**
 - **DNS** zones and records
 - **Gateways**
@@ -114,7 +115,7 @@ The client exposes methods for the following resources:
 ### Public API coverage
 
 The SDK's scope is every Public API operation except the Kubernetes section:
-all **132 of those operations** are implemented.
+all **143 of those operations** are implemented.
 
 One of them depends on the platform deployment. `PUT
 /api/v1/vmware/networks/{id}/edge/bandwidth` (`UpdateVmwareEdgeBandwidth`) applies
@@ -130,6 +131,48 @@ Most mutating operations that trigger a background task provide an `...AndWait` 
 ```go
 server, err := client.CreateServerAndWait(ctx, &entities.CreateServerRequest{ /* ... */ })
 ```
+
+### One-click applications
+
+`GetApplications` reads the application catalog the project is offered in a location.
+An entry names the parameters it asks for (which are required, which are secret, which
+belong to the language model access), the class of sign-in it offers, the resources it is
+recommended to run on, its category and documentation link, and whether a platform
+language model key can be issued for it:
+
+```go
+applications, err := client.GetApplications(ctx, locationID)
+```
+
+A server is ordered with applications through `Applications`, one
+`entities.ApplicationSpec` per catalog entry carrying the parameter values by name. It
+supersedes the flat `ApplicationIDs`: while it is not empty, `application_ids` is not
+applied.
+
+```go
+server, err := client.CreateServerAndWait(ctx, &entities.CreateServerRequest{
+	// ...
+	Applications: []entities.ApplicationSpec{
+		{
+			ID:          "n8n",
+			Parameters:  map[string]string{"N8N_HOST": "n8n.example.com"},
+			IssueLLMKey: true,
+		},
+	},
+})
+```
+
+The create task completes only once every installation has reached a terminal state, so
+the wait spans the install; the `1h` default of `WithPollingTimeout` covers that whole task.
+The server response carries the outcome of every ordered application in
+`ApplicationInstallations` — state, addresses, components, the application sign-in, the
+issued key id and the reason an installation did not succeed. A failed installation is an
+outcome of a successful order, not a failure of it.
+
+The refusals an order with applications can get have their own predicates —
+`sdk.IsApplicationNotFound`, `sdk.IsApplicationRequiredParameterNotSet`,
+`sdk.IsApplicationParameterNotDeclared` and `sdk.IsApplicationLLMKeyDisabled`; the
+parameter names the last two point at are in `RequestError.ErrorParams`.
 
 ### VMware catalog
 
@@ -169,6 +212,24 @@ one). Use the `GetVmware*List` family. `GetVMwareDiskTypes` and
 existing code keeps compiling: `/vmware/disk-types` and `/vmware/storage-profiles`
 exist only under the AdminV2 prefix, so through the Public API they answer 404.
 
+### Server backup
+
+| Method | Operation |
+|---|---|
+| `GetBackupStorageList` | backup storages and schedule limits for a server order in a location (optionally for an image) |
+| `GetServerBackupStorages` | backup storages and schedule limits for an existing server |
+| `GetServerBackup` | state of the backup service of a server and its schedule |
+| `EnableServerBackup` / `EnableServerBackupAndWait` | enable the backup service with a schedule |
+| `UpdateServerBackup` / `UpdateServerBackupAndWait` | replace the backup schedule |
+| `DisableServerBackup` / `DisableServerBackupAndWait` | disable the backup service together with the copies of the server |
+| `GetServerBackupRestorePoints` | restore points of a server |
+| `CreateServerBackupRestorePoint` / `CreateServerBackupRestorePointAndWait` | take a manual copy; a copy the platform failed to take matches `sdk.IsBackupRestorePointFailed` |
+| `RestoreServerBackupRestorePoint` / `RestoreServerBackupRestorePointAndWait` | restore a server over itself from a restore point |
+| `RestoreServerBackupRestorePointNearby` / `RestoreServerBackupRestorePointNearbyAndWait` | restore a restore point into a new server |
+| `DeleteServerBackupRestorePoint` / `DeleteServerBackupRestorePointAndWait` | delete a restore point |
+
+`CreateServerRequest.Backup` enables the backup service with a schedule as part of a server order.
+
 ## Error handling
 
 API errors are returned as `*sdk.RequestError`, which carries the HTTP status,
@@ -192,11 +253,21 @@ cp .env.example .env        # then fill in API_KEY and API_URL
 make example RESOURCE=meta  # read-only, safe to run first
 ```
 
-Available `RESOURCE` values: `meta`, `vmware`, `server`, `network`, `ssh`, `affinity`,
-`dns`, `gateway`, `volume`, `snapshot`, `server_nic`, `race`.
+Available `RESOURCE` values: `meta`, `vmware`, `server`, `application`, `network`, `ssh`,
+`affinity`, `dns`, `gateway`, `volume`, `snapshot`, `backup`, `server_nic`, `race`.
 
 > **Note:** examples other than `meta` and `vmware` create and delete real (billable) resources.
 > Use a dedicated test project.
+
+`application` walks the one-click scenario end to end: it reads the catalog of a location,
+orders a server with the chosen entry, the values of its parameters and a language model key
+where the entry offers one, prints the installations the server response carries, and removes
+the server afterwards. It accepts:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `APPLICATION_LOCATION` | `kz` | location to order in |
+| `APPLICATION_ID` | first entry of the catalog | catalog entry to order |
 
 `vmware_meta`, `vmware_server` and `vmware_network` between them call every exported `Vmware*`
 method, each in both forms (raw call plus explicit wait, and `...AndWait`). Each provisions what
@@ -209,6 +280,14 @@ it needs, removes it afterwards, and prints an ok/failed/skipped tally. They acc
 | `VMWARE_NETWORK_CIDR` | `192.168.94.0` | `/24` base address; the examples bump the third octet |
 | `VMWARE_KEEP` | unset | `1` leaves the created resources in place |
 | `VMWARE_SKIP_LONG` | unset | `1` skips the copy and rebuild steps (~55 min of `vmware_server`) |
+
+`backup` accepts:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `BACKUP_LOCATION` | `kz` | location `tech_title` of the server being created |
+| `BACKUP_IMAGE_ID` | `Debian-12-X64` | image of the server being created |
+| `BACKUP_RESTORE` | unset | `1` runs the restore over the server and nearby |
 
 `vmware_server` takes roughly 100 minutes end to end because rebuild alone runs ~20 minutes and
 both of its forms are exercised; `VMWARE_SKIP_LONG=1` brings it down to about 40.
