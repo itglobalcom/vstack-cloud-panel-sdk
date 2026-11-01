@@ -109,13 +109,13 @@ The client exposes methods for the following resources:
 - **Gateways**
 - **Affinity groups**
 - **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall, nested virtualization), networks (isolated/routed/public), edge (firewall/NAT/VPN/bandwidth) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
-- **Project metadata** — locations, images, applications, tasks
+- **Project metadata** — locations, images, applications, tasks, project consumption (by service, by resource, by day)
 - **VMware catalog** (read-only) — locations with their disk types, OS images, GPU slicing profiles
 
 ### Public API coverage
 
 The SDK's scope is every Public API operation except the Kubernetes section:
-all **143 of those operations** are implemented.
+all **146 of those operations** are implemented.
 
 One of them depends on the platform deployment. `PUT
 /api/v1/vmware/networks/{id}/edge/bandwidth` (`UpdateVmwareEdgeBandwidth`) applies
@@ -173,6 +173,40 @@ The refusals an order with applications can get have their own predicates —
 `sdk.IsApplicationNotFound`, `sdk.IsApplicationRequiredParameterNotSet`,
 `sdk.IsApplicationParameterNotDeclared` and `sdk.IsApplicationLLMKeyDisabled`; the
 parameter names the last two point at are in `RequestError.ErrorParams`.
+
+### Project consumption
+
+Three reads of what the project was charged over a period, each with one fixed
+breakdown:
+
+| Method | Operation |
+|---|---|
+| `GetProjectConsumption` | `GET /api/v1/project/consumption` — total and amounts by service |
+| `GetProjectConsumptionResources` | `GET /api/v1/project/consumption/resources` — amounts by root resource, optionally of one service |
+| `GetProjectConsumptionDaily` | `GET /api/v1/project/consumption/daily` — amounts by day, a day without charges carries 0 |
+
+`entities.ConsumptionPeriodRequest` takes `From` and `To` as `YYYY-MM-DD` dates in the
+partner's time zone, both inclusive; a nil period or an empty date takes the API default
+(the first day of the current month, today). `Validate()` runs before the request and
+rejects a malformed date and `To` earlier than `From`. Every response carries `From`, `To`,
+`TimeZone`, `Currency`, `Total` and `IsFinal` — `false` while the period reaches today,
+since the last day may still grow.
+
+`Service` (`entities.ConsumptionService`) and `Type` (`entities.ConsumptionResourceType`)
+are closed sets that grow by addition: a value without a constant is still a valid
+answer. `ID` and `Name` of a resource are pointers: `ID` is nil when the resource is not
+addressable through the Public API (a vStack gateway, a retired resource, types without
+a Public API section), `Name` is nil when the resource has no name of its own.
+
+```go
+consumption, err := client.GetProjectConsumption(ctx, nil)
+if err != nil {
+	log.Fatalf("cannot read the consumption: %v", err)
+}
+resources, err := client.GetProjectConsumptionResources(ctx,
+	&entities.ConsumptionPeriodRequest{From: "2026-10-01", To: "2026-10-31"},
+	entities.ConsumptionServiceVstack)
+```
 
 ### VMware catalog
 
