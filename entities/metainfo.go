@@ -134,6 +134,8 @@ const (
 	ConsumptionResourceTypeCDNVOD                       ConsumptionResourceType = "cdn_vod"
 	ConsumptionResourceTypeStream                       ConsumptionResourceType = "stream"
 	ConsumptionResourceTypeLLMAccessKey                 ConsumptionResourceType = "llm_access_key"
+	ConsumptionResourceTypeLLMCredits                   ConsumptionResourceType = "llm_credits"
+	ConsumptionResourceTypeLLMPackage                   ConsumptionResourceType = "llm_package"
 	ConsumptionResourceTypeManagedServersSubscription   ConsumptionResourceType = "managed_servers_subscription"
 	ConsumptionResourceTypeManualBilling                ConsumptionResourceType = "manual_billing"
 )
