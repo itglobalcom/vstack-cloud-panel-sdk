@@ -246,7 +246,9 @@ func TestParseProjectConsumptionResponses(t *testing.T) {
 		var resp GetProjectConsumptionResourcesResponse
 		body := `{"consumption":{` + envelope + `,"resources":[
 			{"service":"vstack","type":"vstack_server","id":"l1s42","name":"web-01","total":900.5},
-			{"service":"vstack","type":"vstack_edge","total":100}
+			{"service":"vstack","type":"vstack_edge","total":100},
+			{"service":"llm","type":"llm_credits","name":"Кредиты LLM","total":30.25},
+			{"service":"llm","type":"llm_package","name":"Пакет LLM","total":4}
 		]}}`
 		if err := json.Unmarshal([]byte(body), &resp); err != nil {
 			t.Fatalf("unmarshal: %v", err)
@@ -257,8 +259,8 @@ func TestParseProjectConsumptionResponses(t *testing.T) {
 		if resp.Consumption.ConsumptionTotals != wantTotals {
 			t.Errorf("envelope = %+v, want %+v", resp.Consumption.ConsumptionTotals, wantTotals)
 		}
-		if len(resp.Consumption.Resources) != 2 {
-			t.Fatalf("got %d resources, want 2", len(resp.Consumption.Resources))
+		if len(resp.Consumption.Resources) != 4 {
+			t.Fatalf("got %d resources, want 4", len(resp.Consumption.Resources))
 		}
 
 		named := resp.Consumption.Resources[0]
@@ -281,6 +283,28 @@ func TestParseProjectConsumptionResponses(t *testing.T) {
 		}
 		if bare.Name != nil {
 			t.Errorf("resources[1].name = %q, want nil", *bare.Name)
+		}
+
+		// LLM roots are not addressable through the Public API: no id, a name only.
+		llmRoots := []struct {
+			typ   entities.ConsumptionResourceType
+			name  string
+			total float64
+		}{
+			{entities.ConsumptionResourceTypeLLMCredits, "Кредиты LLM", 30.25},
+			{entities.ConsumptionResourceTypeLLMPackage, "Пакет LLM", 4},
+		}
+		for i, want := range llmRoots {
+			got := resp.Consumption.Resources[2+i]
+			if got.Service != entities.ConsumptionServiceLLM || got.Type != want.typ || got.Total != want.total {
+				t.Errorf("resources[%d] = %+v, want service llm, type %q, total %v", 2+i, got, want.typ, want.total)
+			}
+			if got.ID != nil {
+				t.Errorf("resources[%d].id = %q, want nil", 2+i, *got.ID)
+			}
+			if got.Name == nil || *got.Name != want.name {
+				t.Errorf("resources[%d].name = %v, want %q", 2+i, got.Name, want.name)
+			}
 		}
 	})
 

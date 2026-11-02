@@ -102,11 +102,13 @@ func TestConsumptionClosedSetsOnTheWire(t *testing.T) {
 		ConsumptionResourceTypeCDNVOD:                       "cdn_vod",
 		ConsumptionResourceTypeStream:                       "stream",
 		ConsumptionResourceTypeLLMAccessKey:                 "llm_access_key",
+		ConsumptionResourceTypeLLMCredits:                   "llm_credits",
+		ConsumptionResourceTypeLLMPackage:                   "llm_package",
 		ConsumptionResourceTypeManagedServersSubscription:   "managed_servers_subscription",
 		ConsumptionResourceTypeManualBilling:                "manual_billing",
 	}
-	if len(types) != 25 {
-		t.Errorf("got %d distinct resource types, want 25", len(types))
+	if len(types) != 27 {
+		t.Errorf("got %d distinct resource types, want 27", len(types))
 	}
 	for got, want := range types {
 		if string(got) != want {
