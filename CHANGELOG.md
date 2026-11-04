@@ -9,11 +9,24 @@ All notable changes to this project are documented here. The format follows
 Adds the **vStack server backup** and **one-click application** surfaces — backup
 storages, the backup service of a server and its restore points; the application catalog
 with parameters, applications in a server order, installations in the server response —
-and raises the default wait for a task to one hour (see Changed). Nothing published is
+and the **project consumption** reads (by service, by resource, by day), and raises the default wait for a task to one hour (see Changed). Nothing published is
 removed.
 
 ### Added
 
+- **Project consumption**: what the project was charged over a period —
+  `GetProjectConsumption` (total and amounts by service), `GetProjectConsumptionResources`
+  (amounts by root resource, optionally of one `entities.ConsumptionService`) and
+  `GetProjectConsumptionDaily` (amounts by day, a day without charges carries 0). The
+  period is `entities.ConsumptionPeriodRequest` (`From`/`To`, `YYYY-MM-DD`, inclusive;
+  a nil period or an empty date takes the API default — the first day of the current
+  month, today); its `Validate()` rejects a malformed date and `To` earlier than `From`
+  before any request is sent. Every response carries `From`, `To`, `TimeZone`,
+  `Currency`, `Total` and `IsFinal`. `Service` and `Type`
+  (`entities.ConsumptionResourceType`) are closed sets that grow by addition; `ID` and
+  `Name` of a resource are `*string` and nil when the API leaves them out — a resource
+  not addressable through the Public API, or one without a name of its own. The `meta`
+  example reads all three.
 - **vStack server backup**: the backup storages available to a server order
   (`GetBackupStorageList`) and to a server (`GetServerBackupStorages`) together with
   the partner's schedule limits; the backup service of a server — read

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	sdk "github.com/itglobalcom/vstack-cloud-panel-sdk"
+	"github.com/itglobalcom/vstack-cloud-panel-sdk/entities"
 )
 
 func runMetadataExample(ctx context.Context, client *sdk.CloudClient) {
@@ -23,6 +24,47 @@ func runMetadataExample(ctx context.Context, client *sdk.CloudClient) {
 	fmt.Printf("  Balance: %.2f %s\n", project.Balance, project.Currency)
 	fmt.Printf("  State: %s\n", project.State)
 	fmt.Printf("  Created: %s\n", project.Created)
+
+	// Get project consumption over the default period: this month up to today
+	fmt.Println("\n=== Getting project consumption ===")
+	consumption, err := client.GetProjectConsumption(ctx, nil)
+	if err != nil {
+		log.Fatalf("Failed to get project consumption: %v", err)
+	}
+	fmt.Printf("Consumption %s .. %s (%s, final: %v): %.2f %s\n",
+		consumption.From, consumption.To, consumption.TimeZone, consumption.IsFinal,
+		consumption.Total, consumption.Currency)
+	for _, s := range consumption.Services {
+		fmt.Printf("  %s: %.2f\n", s.Service, s.Total)
+	}
+
+	fmt.Println("\n=== Getting vStack consumption by resource ===")
+	resources, err := client.GetProjectConsumptionResources(ctx,
+		&entities.ConsumptionPeriodRequest{From: consumption.From, To: consumption.To},
+		entities.ConsumptionServiceVstack)
+	if err != nil {
+		log.Fatalf("Failed to get project consumption by resource: %v", err)
+	}
+	for _, r := range resources.Resources {
+		id, name := "-", "-"
+		if r.ID != nil {
+			id = *r.ID
+		}
+		if r.Name != nil {
+			name = *r.Name
+		}
+		fmt.Printf("  %s %s (%s): %.2f\n", r.Type, id, name, r.Total)
+	}
+
+	fmt.Println("\n=== Getting project consumption by day ===")
+	daily, err := client.GetProjectConsumptionDaily(ctx,
+		&entities.ConsumptionPeriodRequest{From: consumption.From, To: consumption.To})
+	if err != nil {
+		log.Fatalf("Failed to get project consumption by day: %v", err)
+	}
+	for _, d := range daily.Days {
+		fmt.Printf("  %s: %.2f\n", d.Date, d.Total)
+	}
 
 	// Get a list of available locations
 	fmt.Println("\n=== Getting available locations ===")
