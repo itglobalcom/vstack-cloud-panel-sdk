@@ -6,11 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Adds the **vStack server backup** and **one-click application** surfaces — backup
-storages, the backup service of a server and its restore points; the application catalog
-with parameters, applications in a server order, installations in the server response —
-and the **project consumption** reads (by service, by resource, by day), and raises the default wait for a task to one hour (see Changed). Nothing published is
-removed.
+## [1.4.0] - 2026-11-06
+
+Adds the **project consumption** reads — by service, by resource, by day. Nothing
+published is removed.
 
 ### Added
 
@@ -27,6 +26,21 @@ removed.
   `Name` of a resource are `*string` and nil when the API leaves them out — a resource
   not addressable through the Public API, or one without a name of its own. The `meta`
   example reads all three.
+
+## [1.3.1] - 2026-10-13
+
+The tree of 1.3.0 under a new tag; nothing changed.
+
+## [1.3.0] - 2026-10-08
+
+Adds the **vStack server backup** and **one-click application** surfaces — backup
+storages, the backup service of a server and its restore points; the application catalog
+with parameters, applications in a server order, installations in the server response —
+and raises the default wait for a task to one hour (see Changed). Nothing published is
+removed.
+
+### Added
+
 - **vStack server backup**: the backup storages available to a server order
   (`GetBackupStorageList`) and to a server (`GetServerBackupStorages`) together with
   the partner's schedule limits; the backup service of a server — read
