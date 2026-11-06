@@ -182,3 +182,249 @@ func TestGetApplicationsAPIError(t *testing.T) {
 		t.Errorf("the code of the API must reach the caller: %v", err)
 	}
 }
+
+func TestBuildProjectConsumptionPath(t *testing.T) {
+	cases := map[string]struct {
+		sub     string
+		period  *entities.ConsumptionPeriodRequest
+		service entities.ConsumptionService
+		want    string
+	}{
+		"defaults":             {"", nil, "", "project/consumption"},
+		"empty period":         {"", &entities.ConsumptionPeriodRequest{}, "", "project/consumption"},
+		"period":               {"", &entities.ConsumptionPeriodRequest{From: "2026-10-01", To: "2026-10-31"}, "", "project/consumption?from=2026-10-01&to=2026-10-31"},
+		"resources filtered":   {"resources", &entities.ConsumptionPeriodRequest{From: "2026-10-01", To: "2026-10-31"}, entities.ConsumptionServiceVstack, "project/consumption/resources?from=2026-10-01&service=vstack&to=2026-10-31"},
+		"resources unfiltered": {"resources", nil, "", "project/consumption/resources"},
+		"daily to only":        {"daily", &entities.ConsumptionPeriodRequest{To: "2026-10-31"}, "", "project/consumption/daily?to=2026-10-31"},
+	}
+	for name, c := range cases {
+		if got := buildProjectConsumptionPath(c.sub, c.period, c.service); got != c.want {
+			t.Errorf("%s: buildProjectConsumptionPath(%q, %+v, %q) = %q, want %q", name, c.sub, c.period, c.service, got, c.want)
+		}
+	}
+}
+
+// The envelope fields sit flat next to the breakdown. Only id and name may be
+// missing: a resource not addressable through the Public API and without a name
+// of its own arrives without both and must decode to nil, not to "".
+func TestParseProjectConsumptionResponses(t *testing.T) {
+	envelope := `"from":"2026-10-01","to":"2026-10-31","time_zone":"Europe/Moscow","currency":"RUB","is_final":true,"total":1234.5678`
+	wantTotals := entities.ConsumptionTotals{
+		From: "2026-10-01", To: "2026-10-31", TimeZone: "Europe/Moscow", Currency: "RUB", IsFinal: true, Total: 1234.5678,
+	}
+
+	t.Run("services", func(t *testing.T) {
+		var resp GetProjectConsumptionResponse
+		body := `{"consumption":{` + envelope + `,"services":[
+			{"service":"vstack","total":1000.5},
+			{"service":"llm","total":234.0678}
+		]}}`
+		if err := json.Unmarshal([]byte(body), &resp); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if resp.Consumption == nil {
+			t.Fatal("consumption = nil")
+		}
+		if resp.Consumption.ConsumptionTotals != wantTotals {
+			t.Errorf("envelope = %+v, want %+v", resp.Consumption.ConsumptionTotals, wantTotals)
+		}
+		want := []entities.ServiceConsumption{
+			{Service: entities.ConsumptionServiceVstack, Total: 1000.5},
+			{Service: entities.ConsumptionServiceLLM, Total: 234.0678},
+		}
+		if len(resp.Consumption.Services) != len(want) {
+			t.Fatalf("got %d services, want %d", len(resp.Consumption.Services), len(want))
+		}
+		for i := range want {
+			if resp.Consumption.Services[i] != want[i] {
+				t.Errorf("services[%d] = %+v, want %+v", i, resp.Consumption.Services[i], want[i])
+			}
+		}
+	})
+
+	t.Run("resources", func(t *testing.T) {
+		var resp GetProjectConsumptionResourcesResponse
+		body := `{"consumption":{` + envelope + `,"resources":[
+			{"service":"vstack","type":"vstack_server","id":"l1s42","name":"web-01","total":900.5},
+			{"service":"vstack","type":"vstack_edge","total":100},
+			{"service":"llm","type":"llm_credits","name":"Кредиты LLM","total":30.25},
+			{"service":"llm","type":"llm_package","name":"Пакет LLM","total":4}
+		]}}`
+		if err := json.Unmarshal([]byte(body), &resp); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if resp.Consumption == nil {
+			t.Fatal("consumption = nil")
+		}
+		if resp.Consumption.ConsumptionTotals != wantTotals {
+			t.Errorf("envelope = %+v, want %+v", resp.Consumption.ConsumptionTotals, wantTotals)
+		}
+		if len(resp.Consumption.Resources) != 4 {
+			t.Fatalf("got %d resources, want 4", len(resp.Consumption.Resources))
+		}
+
+		named := resp.Consumption.Resources[0]
+		if named.Service != entities.ConsumptionServiceVstack || named.Type != entities.ConsumptionResourceTypeVstackServer || named.Total != 900.5 {
+			t.Errorf("resources[0] = %+v", named)
+		}
+		if named.ID == nil || *named.ID != "l1s42" {
+			t.Errorf("resources[0].id = %v, want l1s42", named.ID)
+		}
+		if named.Name == nil || *named.Name != "web-01" {
+			t.Errorf("resources[0].name = %v, want web-01", named.Name)
+		}
+
+		bare := resp.Consumption.Resources[1]
+		if bare.Type != entities.ConsumptionResourceTypeVstackEdge || bare.Total != 100 {
+			t.Errorf("resources[1] = %+v", bare)
+		}
+		if bare.ID != nil {
+			t.Errorf("resources[1].id = %q, want nil", *bare.ID)
+		}
+		if bare.Name != nil {
+			t.Errorf("resources[1].name = %q, want nil", *bare.Name)
+		}
+
+		// LLM roots are not addressable through the Public API: no id, a name only.
+		llmRoots := []struct {
+			typ   entities.ConsumptionResourceType
+			name  string
+			total float64
+		}{
+			{entities.ConsumptionResourceTypeLLMCredits, "Кредиты LLM", 30.25},
+			{entities.ConsumptionResourceTypeLLMPackage, "Пакет LLM", 4},
+		}
+		for i, want := range llmRoots {
+			got := resp.Consumption.Resources[2+i]
+			if got.Service != entities.ConsumptionServiceLLM || got.Type != want.typ || got.Total != want.total {
+				t.Errorf("resources[%d] = %+v, want service llm, type %q, total %v", 2+i, got, want.typ, want.total)
+			}
+			if got.ID != nil {
+				t.Errorf("resources[%d].id = %q, want nil", 2+i, *got.ID)
+			}
+			if got.Name == nil || *got.Name != want.name {
+				t.Errorf("resources[%d].name = %v, want %q", 2+i, got.Name, want.name)
+			}
+		}
+	})
+
+	t.Run("daily", func(t *testing.T) {
+		var resp GetProjectConsumptionDailyResponse
+		body := `{"consumption":{` + envelope + `,"days":[
+			{"date":"2026-10-01","total":1234.5678},
+			{"date":"2026-10-02","total":0}
+		]}}`
+		if err := json.Unmarshal([]byte(body), &resp); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if resp.Consumption == nil {
+			t.Fatal("consumption = nil")
+		}
+		if resp.Consumption.ConsumptionTotals != wantTotals {
+			t.Errorf("envelope = %+v, want %+v", resp.Consumption.ConsumptionTotals, wantTotals)
+		}
+		want := []entities.DailyConsumption{{Date: "2026-10-01", Total: 1234.5678}, {Date: "2026-10-02"}}
+		if len(resp.Consumption.Days) != len(want) {
+			t.Fatalf("got %d days, want %d", len(resp.Consumption.Days), len(want))
+		}
+		for i := range want {
+			if resp.Consumption.Days[i] != want[i] {
+				t.Errorf("days[%d] = %+v, want %+v", i, resp.Consumption.Days[i], want[i])
+			}
+		}
+	})
+}
+
+// Each read is a GET on its own route with the period and the filter as query
+// and the key in X-API-KEY. A malformed period is refused before the request,
+// and a response without the consumption envelope is ErrNotFound, not an empty
+// consumption.
+func TestGetProjectConsumptionRequests(t *testing.T) {
+	period := &entities.ConsumptionPeriodRequest{From: "2026-10-01", To: "2026-10-31"}
+	reversed := &entities.ConsumptionPeriodRequest{From: "2026-10-31", To: "2026-10-01"}
+	envelope := `"from":"2026-10-01","to":"2026-10-31","time_zone":"Europe/Moscow","currency":"RUB","is_final":true,"total":10`
+
+	type call func(ctx context.Context, c *CloudClient, p *entities.ConsumptionPeriodRequest) (float64, error)
+	reads := map[string]struct {
+		call call
+		uri  string
+		body string
+	}{
+		"services": {
+			call: func(ctx context.Context, c *CloudClient, p *entities.ConsumptionPeriodRequest) (float64, error) {
+				r, err := c.GetProjectConsumption(ctx, p)
+				if r == nil {
+					return 0, err
+				}
+				return r.Total, err
+			},
+			uri:  "/api/v1/project/consumption?from=2026-10-01&to=2026-10-31",
+			body: `{"consumption":{` + envelope + `,"services":[{"service":"vstack","total":10}]}}`,
+		},
+		"resources": {
+			call: func(ctx context.Context, c *CloudClient, p *entities.ConsumptionPeriodRequest) (float64, error) {
+				r, err := c.GetProjectConsumptionResources(ctx, p, entities.ConsumptionServiceVstack)
+				if r == nil {
+					return 0, err
+				}
+				return r.Total, err
+			},
+			uri:  "/api/v1/project/consumption/resources?from=2026-10-01&service=vstack&to=2026-10-31",
+			body: `{"consumption":{` + envelope + `,"resources":[{"service":"vstack","type":"vstack_edge","total":10}]}}`,
+		},
+		"daily": {
+			call: func(ctx context.Context, c *CloudClient, p *entities.ConsumptionPeriodRequest) (float64, error) {
+				r, err := c.GetProjectConsumptionDaily(ctx, p)
+				if r == nil {
+					return 0, err
+				}
+				return r.Total, err
+			},
+			uri:  "/api/v1/project/consumption/daily?from=2026-10-01&to=2026-10-31",
+			body: `{"consumption":{` + envelope + `,"days":[{"date":"2026-10-01","total":10}]}}`,
+		},
+	}
+
+	for name, read := range reads {
+		t.Run(name, func(t *testing.T) {
+			var calls int32
+			var lastRequest, apiKey, respond atomic.Value
+			respond.Store(read.body)
+			client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				atomic.AddInt32(&calls, 1)
+				lastRequest.Store(r.Method + " " + r.URL.RequestURI())
+				apiKey.Store(r.Header.Get("X-API-KEY"))
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(respond.Load().(string)))
+			}))
+			ctx := context.Background()
+
+			total, err := read.call(ctx, client, period)
+			if err != nil {
+				t.Fatalf("read: %v", err)
+			}
+			if total != 10 {
+				t.Errorf("total = %v, want 10", total)
+			}
+			if got, want := lastRequest.Load(), "GET "+read.uri; got != want {
+				t.Errorf("sent %v, want %q", got, want)
+			}
+			if got := apiKey.Load(); got != "test-key" {
+				t.Errorf("X-API-KEY = %v, want test-key", got)
+			}
+
+			before := atomic.LoadInt32(&calls)
+			if _, err := read.call(ctx, client, reversed); err == nil {
+				t.Error("a reversed period must be refused")
+			}
+			if after := atomic.LoadInt32(&calls); after != before {
+				t.Errorf("a reversed period reached the API: %d calls, want %d", after, before)
+			}
+
+			respond.Store(`{}`)
+			if _, err := read.call(ctx, client, nil); !errors.Is(err, ErrNotFound) {
+				t.Errorf("a response without consumption: err = %v, want ErrNotFound", err)
+			}
+		})
+	}
+}
