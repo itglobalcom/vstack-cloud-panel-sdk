@@ -25,6 +25,17 @@ func runMetadataExample(ctx context.Context, client *sdk.CloudClient) {
 	fmt.Printf("  State: %s\n", project.State)
 	fmt.Printf("  Created: %s\n", project.Created)
 
+	// Get the services connected to the project
+	fmt.Println("\n=== Getting project services ===")
+	projectServices, err := client.GetProjectServices(ctx)
+	if err != nil {
+		log.Fatalf("Failed to get project services: %v", err)
+	}
+	fmt.Printf("Project %d services:\n", projectServices.ProjectID)
+	for _, s := range projectServices.Services {
+		fmt.Printf("  %s: %s\n", s.Service, s.State)
+	}
+
 	// Get project consumption over the default period: this month up to today
 	fmt.Println("\n=== Getting project consumption ===")
 	consumption, err := client.GetProjectConsumption(ctx, nil)
