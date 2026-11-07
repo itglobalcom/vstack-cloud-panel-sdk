@@ -6,7 +6,7 @@
 
 `vstack-cloud-panel-sdk` is a Go client library for the [vStack Cloud Panel] API.
 It provides a typed, concurrency-safe client for managing cloud resources such as servers,
-networks, volumes, snapshots, SSH keys, DNS zones, gateways and more.
+networks, volumes, snapshots, SSH keys, DNS zones, gateways, the LLM service and more.
 
 ## Features
 
@@ -109,6 +109,7 @@ The client exposes methods for the following resources:
 - **Gateways**
 - **Affinity groups**
 - **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall, nested virtualization), networks (isolated/routed/public), edge (firewall/NAT/VPN/bandwidth) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
+- **LLM** — connection of the service, groups with their models and tags, access keys (issue, one-time secret, lock, unlock, delete, tags), model catalog, package and package plans, usage and request log
 - **Project metadata** — locations, images, applications, tasks, project consumption (by service, by resource, by day)
 - **VMware catalog** (read-only) — locations with their disk types, OS images, GPU slicing profiles
 
@@ -116,7 +117,7 @@ The client exposes methods for the following resources:
 
 The SDK's scope is every Public API operation except the Kubernetes section and the
 OAuth authorization routes (`/.well-known/oauth-protected-resource`, `/oauth/validate`):
-**146 of those operations** are implemented; the list of services connected to the
+**169 of those operations** are implemented; the list of services connected to the
 project (`GET /api/v1/project/services`) is not covered yet.
 
 One of them depends on the platform deployment. `PUT
@@ -210,6 +211,55 @@ resources, err := client.GetProjectConsumptionResources(ctx,
 	entities.ConsumptionServiceVstack)
 ```
 
+### LLM
+
+The LLM section manages the language model service of the project. The service is
+connected once, with its first group and first access key; until then
+`GetLLMConnection` reports `not_connected`, groups, keys, the catalog and the usage
+come empty, and every change other than `ConnectLLM` is refused with the API code
+`ServiceNotConnected`.
+
+| Method | Operation |
+|---|---|
+| `GetLLMConnection`, `ConnectLLM` | `GET`/`POST /api/v1/llm/connection` |
+| `GetLLMGroupList`, `GetLLMGroup`, `CreateLLMGroup` | `GET /api/v1/llm/groups`, `GET /api/v1/llm/groups/{group_id}`, `POST /api/v1/llm/groups` |
+| `SetLLMGroupModels`, `SetLLMGroupTags`, `DisableLLMGroup` | `PUT …/groups/{group_id}/models`, `PUT …/tags`, `POST …/disable` |
+| `GetLLMAccessKeyList` | `GET /api/v1/llm/access-keys`, optionally of one group |
+| `GetLLMAccessKey`, `IssueLLMAccessKey`, `DeleteLLMAccessKey` | `GET`/`POST`/`DELETE /api/v1/llm/groups/{group_id}/access-keys[/{access_key_id}]` |
+| `RevealLLMAccessKeySecret`, `LockLLMAccessKey`, `UnlockLLMAccessKey`, `SetLLMAccessKeyTags` | `POST …/secret`, `POST …/lock`, `POST …/unlock`, `PUT …/tags` |
+| `GetLLMModelList`, `GetLLMModel` | `GET /api/v1/llm/models[/{model_id}]` |
+| `GetLLMPackage`, `GetLLMPackagePlanList` | `GET /api/v1/llm/package`, `GET /api/v1/llm/package-plans` |
+| `GetLLMUsage`, `GetLLMRequestList` | `GET /api/v1/llm/usage`, `GET /api/v1/llm/requests` |
+
+Every operation with a task has its `...AndWait` variant; the task id is `llm{N}`, read
+with `GetTask`. A created group and an issued key are reported in the task `Resources`
+(`entities.TaskResourceLLMGroup`, `entities.TaskResourceLLMAccessKey`), and the
+`...AndWait` variants return them. Models and tags of a group and tags of a key are
+replaced as a whole set; tags change synchronously. Disabling a group cannot be undone.
+
+The secret of a key is handed out once: a second `RevealLLMAccessKeySecret` is refused
+with `AccessKeySecretAlreadyRevealed`, a key migrated without its secret with
+`MigratedAccessKeySecretIsNotStored`.
+
+`entities.LLMUsageRequest` takes `From` and `To` as required `YYYY-MM-DD` dates, both
+inclusive, at most 366 days; `GroupBy` is `none` (default), `day`, `model`, `group` or
+`access_key`. `Validate()` runs before the request. Closed sets (states, model kind,
+contour and unit, breakdown) are named string types that grow by addition; fields the API
+may leave out are pointers or nil slices — a group being created and a key being issued
+come without `ID` and with `TaskID`.
+
+```go
+group, err := client.CreateLLMGroupAndWait(ctx, &entities.CreateLLMGroupRequest{Name: "assistants"})
+if err != nil {
+	log.Fatalf("cannot create the group: %v", err)
+}
+key, err := client.IssueLLMAccessKeyAndWait(ctx, *group.ID, &entities.IssueLLMAccessKeyRequest{Name: "bot"})
+if err != nil {
+	log.Fatalf("cannot issue the key: %v", err)
+}
+secret, err := client.RevealLLMAccessKeySecret(ctx, *group.ID, *key.ID)
+```
+
 ### VMware catalog
 
 `GetVmwareLocationList`, `GetVmwareImageList` and `GetVmwareGPUModelList` read
@@ -290,7 +340,7 @@ make example RESOURCE=meta  # read-only, safe to run first
 ```
 
 Available `RESOURCE` values: `meta`, `vmware`, `server`, `application`, `network`, `ssh`,
-`affinity`, `dns`, `gateway`, `volume`, `snapshot`, `backup`, `server_nic`, `race`.
+`affinity`, `dns`, `gateway`, `volume`, `snapshot`, `backup`, `server_nic`, `llm`, `race`.
 
 > **Note:** examples other than `meta` and `vmware` create and delete real (billable) resources.
 > Use a dedicated test project.
@@ -304,6 +354,11 @@ the server afterwards. It accepts:
 |---|---|---|
 | `APPLICATION_LOCATION` | `kz` | location to order in |
 | `APPLICATION_ID` | first entry of the catalog | catalog entry to order |
+
+`llm` connects the LLM service where the project has none, creates a group with the first
+model available to groups, issues a key, reveals its secret once, locks and unlocks the key
+and reads the usage of the month; afterwards it deletes the key and disables the group — a
+disabled group stays listed, disabling cannot be undone.
 
 `vmware_meta`, `vmware_server` and `vmware_network` between them call every exported `Vmware*`
 method, each in both forms (raw call plus explicit wait, and `...AndWait`). Each provisions what
