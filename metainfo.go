@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	projectPath      = "project"
-	locationsPath    = "locations"
-	imagesPath       = "images"
-	applicationsPath = "applications"
+	projectPath         = "project"
+	projectServicesPath = "project/services"
+	locationsPath       = "locations"
+	imagesPath          = "images"
+	applicationsPath    = "applications"
 
 	projectConsumptionPath         = "project/consumption"
 	projectConsumptionResourcesSub = "resources"
@@ -75,6 +76,26 @@ func (c *CloudClient) GetProject(ctx context.Context) (*entities.Project, error)
 	}
 
 	return resp.Project, nil
+}
+
+// GetProjectServices retrieves the project of the API key and the services
+// connected to it. The route requires no permission in the project.
+func (c *CloudClient) GetProjectServices(ctx context.Context) (*entities.ProjectServices, error) {
+	req, err := c.newRequest(ctx, http.MethodGet, projectServicesPath, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create get project services request: %w", err)
+	}
+
+	var resp entities.ProjectServices
+	if err := c.doJSON(req, &resp); err != nil {
+		return nil, fmt.Errorf("failed to get project services: %w", err)
+	}
+
+	if resp.ProjectID == 0 {
+		return nil, fmt.Errorf("project not found in project services response: %w", ErrNotFound)
+	}
+
+	return &resp, nil
 }
 
 // GetLocations retrieves list of available locations with volume size limits

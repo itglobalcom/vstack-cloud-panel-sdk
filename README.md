@@ -110,15 +110,14 @@ The client exposes methods for the following resources:
 - **Affinity groups**
 - **VMware Cloud** — servers (power, resize, copy, rebuild, snapshot, volumes, NICs, firewall, nested virtualization), networks (isolated/routed/public), edge (firewall/NAT/VPN/bandwidth) and metadata; tasks via `GetVmwareTask` / `WaitVmwareTask`
 - **LLM** — connection of the service, groups with their models and tags, access keys (issue, one-time secret, lock, unlock, delete, tags), model catalog, package and package plans, usage and request log
-- **Project metadata** — locations, images, applications, tasks, project consumption (by service, by resource, by day)
+- **Project metadata** — services connected to the project, locations, images, applications, tasks, project consumption (by service, by resource, by day)
 - **VMware catalog** (read-only) — locations with their disk types, OS images, GPU slicing profiles
 
 ### Public API coverage
 
 The SDK's scope is every Public API operation except the Kubernetes section and the
 OAuth authorization routes (`/.well-known/oauth-protected-resource`, `/oauth/validate`):
-**169 of those operations** are implemented; the list of services connected to the
-project (`GET /api/v1/project/services`) is not covered yet.
+all **170 of those operations** are implemented.
 
 One of them depends on the platform deployment. `PUT
 /api/v1/vmware/networks/{id}/edge/bandwidth` (`UpdateVmwareEdgeBandwidth`) applies
@@ -176,6 +175,27 @@ The refusals an order with applications can get have their own predicates —
 `sdk.IsApplicationNotFound`, `sdk.IsApplicationRequiredParameterNotSet`,
 `sdk.IsApplicationParameterNotDeclared` and `sdk.IsApplicationLLMKeyDisabled`; the
 parameter names the last two point at are in `RequestError.ErrorParams`.
+
+### Connected services
+
+`GetProjectServices` (`GET /api/v1/project/services`) returns the project ID of the API
+key and the services connected to the project, each with its state. The route requires
+no permission in the project, so it is the way to learn the project ID with a key that
+cannot read `GetProject`. `Service` (`entities.ProjectService`) is a closed set that grows
+by addition: a value without a constant is still a valid answer. A service that is not
+connected is absent from the list.
+
+```go
+services, err := client.GetProjectServices(ctx)
+if err != nil {
+	log.Fatalf("cannot read the project services: %v", err)
+}
+for _, s := range services.Services {
+	if s.Service == entities.ProjectServiceLLM && s.State == entities.ProjectServiceStateActive {
+		fmt.Printf("LLM is available in project %d\n", services.ProjectID)
+	}
+}
+```
 
 ### Project consumption
 

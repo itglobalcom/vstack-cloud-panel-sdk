@@ -27,6 +27,10 @@ All notable changes to this project are documented here. The format follows
   example walks connection, group, key and secret.
 - `GetTask` and the task wait read LLM tasks (`llm{N}`); `entities.TaskResourceLLMGroup`
   and `entities.TaskResourceLLMAccessKey` name the resources they report.
+- `GetProjectServices` reads the project ID of the API key and the services connected to
+  the project with their state (`GET /api/v1/project/services`), with no permission
+  required in the project. `entities.ProjectService` grows by addition: a value without a
+  constant is still valid; `entities.ProjectServiceState` is `active` or `maintenance`.
 
 ## [1.4.0] - 2026-11-06
 
