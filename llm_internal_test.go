@@ -842,6 +842,104 @@ func TestLLMCreateAndWait(t *testing.T) {
 	})
 }
 
+// A changing operation waits for its llm<n> task and then rereads the object it
+// changed; a failed task is returned as ErrTaskFailed and nothing is reread.
+func TestLLMChangeAndWait(t *testing.T) {
+	ctx := context.Background()
+
+	type op struct {
+		start, read, readAnswer string
+		call                    func(c *CloudClient) (any, error)
+		want                    any
+	}
+	ops := map[string]op{
+		"ConnectLLMAndWait": {
+			"POST /api/v1/llm/connection", "GET /api/v1/llm/connection", `{"connection":{"state":"connected"}}`,
+			func(c *CloudClient) (any, error) {
+				r, err := c.ConnectLLMAndWait(ctx, &entities.ConnectLLMRequest{GroupName: "prod", FirstKeyName: "ci"})
+				return field(r, err, func() any { return r.State })
+			}, entities.LLMConnectionStateConnected,
+		},
+		"SetLLMGroupModelsAndWait": {
+			"PUT /api/v1/llm/groups/3/models", "GET /api/v1/llm/groups/3", `{"group":{"id":3,"name":"prod","created_at":"x"}}`,
+			func(c *CloudClient) (any, error) {
+				r, err := c.SetLLMGroupModelsAndWait(ctx, 3, &entities.SetLLMGroupModelsRequest{ModelIDs: []entities.LLMModelID{7}})
+				return field(r, err, func() any { return r.Name })
+			}, "prod",
+		},
+		"DisableLLMGroupAndWait": {
+			"POST /api/v1/llm/groups/3/disable", "GET /api/v1/llm/groups/3", `{"group":{"id":3,"name":"prod","created_at":"x"}}`,
+			func(c *CloudClient) (any, error) {
+				r, err := c.DisableLLMGroupAndWait(ctx, 3)
+				return field(r, err, func() any { return r.Name })
+			}, "prod",
+		},
+		"LockLLMAccessKeyAndWait": {
+			"POST /api/v1/llm/groups/3/access-keys/9/lock", "GET /api/v1/llm/groups/3/access-keys/9", `{"access_key":{"id":9,"group_id":3,"name":"ci","created_at":"x"}}`,
+			func(c *CloudClient) (any, error) {
+				r, err := c.LockLLMAccessKeyAndWait(ctx, 3, 9, nil)
+				return field(r, err, func() any { return r.Name })
+			}, "ci",
+		},
+		"UnlockLLMAccessKeyAndWait": {
+			"POST /api/v1/llm/groups/3/access-keys/9/unlock", "GET /api/v1/llm/groups/3/access-keys/9", `{"access_key":{"id":9,"group_id":3,"name":"ci","created_at":"x"}}`,
+			func(c *CloudClient) (any, error) {
+				r, err := c.UnlockLLMAccessKeyAndWait(ctx, 3, 9)
+				return field(r, err, func() any { return r.Name })
+			}, "ci",
+		},
+		"DeleteLLMAccessKeyAndWait": {
+			"DELETE /api/v1/llm/groups/3/access-keys/9", "", "",
+			func(c *CloudClient) (any, error) {
+				return nil, c.DeleteLLMAccessKeyAndWait(ctx, 3, 9)
+			}, nil,
+		},
+	}
+
+	for name, o := range ops {
+		t.Run(name, func(t *testing.T) {
+			answers := map[string]string{
+				o.start:                   `{"task_id":"llm42"}`,
+				"GET /api/v1/tasks/llm42": llmTaskAnswer("llm42", entities.TaskStateCompleted, ``),
+			}
+			wantLast := "GET /api/v1/tasks/llm42"
+			if o.read != "" {
+				answers[o.read] = o.readAnswer
+				wantLast = o.read
+			}
+			stub := &llmStub{answers: answers}
+			client := newTestClient(t, stub.handler(t))
+
+			got, err := o.call(client)
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			if got != o.want {
+				t.Errorf("%s = %v, want %v", name, got, o.want)
+			}
+			calls := stub.snapshot()
+			if first := calls[0].method + " " + calls[0].uri; first != o.start {
+				t.Errorf("first request = %s, want %s", first, o.start)
+			}
+			if last := calls[len(calls)-1].method + " " + calls[len(calls)-1].uri; last != wantLast {
+				t.Errorf("last request = %s, want %s", last, wantLast)
+			}
+		})
+
+		t.Run(name+" failed task", func(t *testing.T) {
+			stub := &llmStub{answers: map[string]string{
+				o.start:                   `{"task_id":"llm42"}`,
+				"GET /api/v1/tasks/llm42": llmTaskAnswer("llm42", entities.TaskStateFailed, ``),
+			}}
+			client := newTestClient(t, stub.handler(t))
+
+			if _, err := o.call(client); !errors.Is(err, ErrTaskFailed) {
+				t.Errorf("%s: err = %v, want ErrTaskFailed", name, err)
+			}
+		})
+	}
+}
+
 func mustUnmarshal(t *testing.T, body []byte, v any) {
 	t.Helper()
 	if err := json.Unmarshal(body, v); err != nil {
