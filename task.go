@@ -38,8 +38,8 @@ type taskResponseWrap struct {
 }
 
 // GetTask retrieves a specific task by ID, in any of the task ID formats the
-// endpoint serves: vStack ("l{N}t{N}"), DNS ("dns{N}"), Kubernetes
-// ("k8s_{f|m}{N}") and VMware ("vmw{N}").
+// endpoint serves: vStack ("l{N}t{N}"), DNS ("dns{N}"), LLM ("llm{N}"),
+// Kubernetes ("k8s_{f|m}{N}") and VMware ("vmw{N}").
 //
 // entities.TaskResponse decodes all of them. The unified part of the model
 // (state, type, progress, timestamps, Resources) is identical for every service,
