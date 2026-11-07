@@ -83,6 +83,40 @@ const (
 	ApplicationLLMKindEndpoint ApplicationLLMKind = "Endpoint"
 )
 
+// ProjectServices is the project of the API key with the services connected to it.
+type ProjectServices struct {
+	ProjectID int                  `json:"project_id"`
+	Services  []ProjectServiceItem `json:"services"`
+}
+
+// ProjectServiceItem is one service connected to the project and its state.
+type ProjectServiceItem struct {
+	Service ProjectService      `json:"service"`
+	State   ProjectServiceState `json:"state"`
+}
+
+// ProjectService is a service the project can have connected.
+// The set grows by addition: a value without a constant here is still valid.
+type ProjectService string
+
+const (
+	ProjectServiceVstack     ProjectService = "vstack"
+	ProjectServiceVmware     ProjectService = "vmware"
+	ProjectServiceDNS        ProjectService = "dns"
+	ProjectServiceKubernetes ProjectService = "kubernetes"
+	ProjectServiceLLM        ProjectService = "llm"
+)
+
+// ProjectServiceState is the availability of a connected service.
+type ProjectServiceState string
+
+const (
+	// ProjectServiceStateActive — the service is available.
+	ProjectServiceStateActive ProjectServiceState = "active"
+	// ProjectServiceStateMaintenance — the service is under maintenance.
+	ProjectServiceStateMaintenance ProjectServiceState = "maintenance"
+)
+
 // ConsumptionService is the billed service a consumption amount belongs to.
 // It is a different vocabulary from the services of GET /project/services.
 // The set grows by addition: a value without a constant here is still valid.

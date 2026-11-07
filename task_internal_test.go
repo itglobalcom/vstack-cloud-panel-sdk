@@ -129,6 +129,61 @@ func TestParseTaskResponseVmwareTask(t *testing.T) {
 	}
 }
 
+// An LLM task decodes through the base model: it has no legacy per-resource
+// fields, so the group and the key are readable only through resources[].
+func TestParseTaskResponseLLMTask(t *testing.T) {
+	body := []byte(`{"task":{
+		"id":"llm42","type":"IssueAccessKeyV2","progress_percent":100,
+		"is_completed":"Completed",
+		"created":"2026-11-01T10:00:00Z","completed":"2026-11-01T10:00:09Z",
+		"resources":[{"type":"llm_group","id":"3"},{"type":"llm_access_key","id":"21"}]
+	}}`)
+
+	var wrap taskResponseWrap
+	if err := json.Unmarshal(body, &wrap); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	task := wrap.Task
+	if task.ID != "llm42" || !task.IsSucceeded() {
+		t.Errorf("task = %+v, want llm42 completed", task)
+	}
+	if got := task.ResourceID(entities.TaskResourceLLMGroup); got != "3" {
+		t.Errorf("ResourceID(llm_group) = %q, want %q", got, "3")
+	}
+	if got := task.ResourceID(entities.TaskResourceLLMAccessKey); got != "21" {
+		t.Errorf("ResourceID(llm_access_key) = %q, want %q", got, "21")
+	}
+}
+
+// An llm<n> task is a base task: GetTask reads it from tasks/llm<n> and the
+// wait polls it to the end, unlike a VMware task.
+func TestWaitTaskCompletionLLMTask(t *testing.T) {
+	var reads int32
+	var path atomic.Value
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path.Store(r.Method + " " + r.URL.Path)
+		state := entities.TaskStateInProgress
+		if atomic.AddInt32(&reads, 1) >= 2 {
+			state = entities.TaskStateCompleted
+		}
+		writeTaskState(w, "llm42", state)
+	}))
+
+	task, err := client.waitTaskCompletion(context.Background(), "llm42")
+	if err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+	if task.ID != "llm42" || !task.IsSucceeded() {
+		t.Errorf("task = %+v, want llm42 completed", task)
+	}
+	if got := atomic.LoadInt32(&reads); got != 2 {
+		t.Errorf("got %d reads, want 2", got)
+	}
+	if got := path.Load(); got != "GET /api/v1/tasks/llm42" {
+		t.Errorf("sent %v, want GET /api/v1/tasks/llm42", got)
+	}
+}
+
 // The API omits null fields, so an unfinished task arrives without "completed"
 // and a task that touched nothing without "resources" — that must decode to zero
 // values rather than fail.
@@ -188,21 +243,23 @@ func TestTaskStatePredicates(t *testing.T) {
 // constants, so pinning them here pins both spellings.
 func TestTaskStateWireValues(t *testing.T) {
 	cases := map[string]string{
-		entities.TaskStateNew:         "New",
-		entities.TaskStateInProgress:  "InProgress",
-		entities.TaskStateCompleted:   "Completed",
-		entities.TaskStateFailed:      "Failed",
-		entities.TaskStateCanceled:    "Canceled",
-		entities.TaskResourceServer:   "server",
-		entities.TaskResourceNetwork:  "network",
-		entities.TaskResourceVolume:   "volume",
-		entities.TaskResourceSnapshot: "snapshot",
-		entities.TaskResourceNIC:      "nic",
-		entities.TaskResourceGateway:  "gateway",
-		entities.TaskResourceDomain:   "domain",
-		entities.TaskResourceRecord:   "record",
-		entities.TaskResourcePTR:      "ptr",
-		entities.TaskResourceCluster:  "cluster",
+		entities.TaskStateNew:             "New",
+		entities.TaskStateInProgress:      "InProgress",
+		entities.TaskStateCompleted:       "Completed",
+		entities.TaskStateFailed:          "Failed",
+		entities.TaskStateCanceled:        "Canceled",
+		entities.TaskResourceServer:       "server",
+		entities.TaskResourceNetwork:      "network",
+		entities.TaskResourceVolume:       "volume",
+		entities.TaskResourceSnapshot:     "snapshot",
+		entities.TaskResourceNIC:          "nic",
+		entities.TaskResourceGateway:      "gateway",
+		entities.TaskResourceDomain:       "domain",
+		entities.TaskResourceRecord:       "record",
+		entities.TaskResourcePTR:          "ptr",
+		entities.TaskResourceCluster:      "cluster",
+		entities.TaskResourceLLMGroup:     "llm_group",
+		entities.TaskResourceLLMAccessKey: "llm_access_key",
 	}
 	for got, want := range cases {
 		if got != want {

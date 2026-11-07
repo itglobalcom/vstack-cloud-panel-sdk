@@ -28,13 +28,17 @@ const (
 	TaskResourceRecord   = "record"
 	TaskResourcePTR      = "ptr"
 	TaskResourceCluster  = "cluster"
+	// TaskResourceLLMGroup is an LLM group; its ID is the decimal entities.LLMGroupID.
+	TaskResourceLLMGroup = "llm_group"
+	// TaskResourceLLMAccessKey is an LLM access key; its ID is the decimal entities.LLMAccessKeyID.
+	TaskResourceLLMAccessKey = "llm_access_key"
 )
 
 // TaskResource is a reference to a resource a task touched.
 //
 // ID is a string in the format the owning service addresses that resource with
-// in its own routes: an encoded id for vStack, a decimal integer for VMware and
-// K8s, a domain name or a decimal integer for DNS.
+// in its own routes: an encoded id for vStack, a decimal integer for VMware,
+// K8s and LLM, a domain name or a decimal integer for DNS.
 type TaskResource struct {
 	Type string `json:"type"`
 	ID   string `json:"id"`
