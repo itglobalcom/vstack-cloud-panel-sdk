@@ -481,16 +481,22 @@ type LLMPackageStop struct {
 }
 
 // LLMCurrentPackage is the package state of the project. Package is nil when
-// the project has no current package. PricePerCredit, Currency and TaxLabel
-// are nil for a project without the Finances option: usage in credits only.
+// the project has no current package. For a project without the Finances
+// option — usage in credits only — PricePerCredit and TaxLabel are nil and
+// Currency is empty.
 type LLMCurrentPackage struct {
 	Package          *LLMPackage     `json:"package,omitempty"`
 	Usage            LLMPackageUsage `json:"usage"`
 	PricePerCredit   *float64        `json:"price_per_credit,omitempty"`
-	Currency         *string         `json:"currency,omitempty"`
+	Currency         string          `json:"currency,omitempty"`
 	TaxLabel         *LLMTaxLabel    `json:"tax_label,omitempty"`
 	PackagesDisabled bool            `json:"packages_disabled"`
-	Stop             *LLMPackageStop `json:"stop,omitempty"`
+	// ExhaustedPackageMode and PayAsYouGoLimitCredits repeat the choice of the
+	// current package; without a package the mode is continue_pay_as_you_go
+	// and there is no limit.
+	ExhaustedPackageMode   LLMExhaustedPackageMode `json:"exhausted_package_mode"`
+	PayAsYouGoLimitCredits *float64                `json:"pay_as_you_go_limit_credits,omitempty"`
+	Stop                   *LLMPackageStop         `json:"stop,omitempty"`
 }
 
 // LLMPackagePlanMonthTerms are the terms of a plan for the rest of the current
