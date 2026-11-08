@@ -25,6 +25,18 @@ All notable changes to this project are documented here. The format follows
   the usage period `From`/`To` required `YYYY-MM-DD`, `To` not earlier than `From`, at
   most 366 days, a known `GroupBy`. The secret of a key is handed out once. The `llm`
   example walks connection, group, key and secret.
+- **LLM** for a project without the Finances option — usage in credits only: the money
+  fields are left out and decode as nil — the price, the discount and the currency of a
+  package plan (`LLMPackagePlan`, its `CurrentMonth.Price`) and of a package
+  (`LLMPackage`), the credit price, the currency and the tax label of the current package
+  (`LLMCurrentPackage`), as well as the costs and the credit price of the usage, the
+  models and the groups. `LLMPackagePlan.Source` tells a package of the partner tariff
+  (`catalog`) from an individual package of the project (`individual`). The choice of what
+  happens once the package is used up and the pay-as-you-go limit belong to the package
+  (`LLMPackage.ExhaustedPackageMode`, `LLMPackage.PayAsYouGoLimitCredits`), not to
+  `LLMCurrentPackage`. A group and a key of a project suspended by its LLM quota report
+  `suspended_by_project_quota` instead of `active`; the current package reports the stop
+  with the reason `project_quota_exhausted`.
 - `GetTask` and the task wait read LLM tasks (`llm{N}`); `entities.TaskResourceLLMGroup`
   and `entities.TaskResourceLLMAccessKey` name the resources they report.
 - `GetProjectServices` reads the project ID of the API key and the services connected to

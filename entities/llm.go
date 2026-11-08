@@ -66,6 +66,9 @@ const (
 	LLMGroupStateActive   LLMGroupState = "active"
 	LLMGroupStateDisabled LLMGroupState = "disabled"
 	LLMGroupStateDeleted  LLMGroupState = "deleted"
+	// LLMGroupStateSuspendedByProjectQuota replaces active while the LLM service
+	// of the project is suspended: the project quota is used up.
+	LLMGroupStateSuspendedByProjectQuota LLMGroupState = "suspended_by_project_quota"
 )
 
 // LLMGroupOperation is the operation a group is waiting on.
@@ -103,6 +106,9 @@ const (
 	LLMAccessKeyStateRevoked  LLMAccessKeyState = "revoked"
 	LLMAccessKeyStateRemoving LLMAccessKeyState = "removing"
 	LLMAccessKeyStateRemoved  LLMAccessKeyState = "removed"
+	// LLMAccessKeyStateSuspendedByProjectQuota replaces active while the LLM
+	// service of the project is suspended: the project quota is used up.
+	LLMAccessKeyStateSuspendedByProjectQuota LLMAccessKeyState = "suspended_by_project_quota"
 )
 
 // LLMAccessKeyOperation is the operation an access key is waiting on.
@@ -187,6 +193,15 @@ const (
 	LLMTaxLabelVATExcluded LLMTaxLabel = "vat_excluded"
 )
 
+// LLMPackageSource tells a package of the partner tariff from an individual
+// package of the project.
+type LLMPackageSource string
+
+const (
+	LLMPackageSourceCatalog    LLMPackageSource = "catalog"
+	LLMPackageSourceIndividual LLMPackageSource = "individual"
+)
+
 // LLMPackageState is the state of a credit package.
 type LLMPackageState string
 
@@ -206,15 +221,16 @@ const (
 	LLMExhaustedPackageModeContinuePayAsYouGo LLMExhaustedPackageMode = "continue_pay_as_you_go"
 )
 
-// LLMPackageStopReason is why the service was stopped by the package.
+// LLMPackageStopReason is why the service of the project was stopped.
 type LLMPackageStopReason string
 
 const (
 	LLMPackageStopReasonPackageExhausted         LLMPackageStopReason = "package_exhausted"
 	LLMPackageStopReasonPayAsYouGoLimitExhausted LLMPackageStopReason = "pay_as_you_go_limit_exhausted"
+	LLMPackageStopReasonProjectQuotaExhausted    LLMPackageStopReason = "project_quota_exhausted"
 )
 
-// LLMPackageStopState is the state of a stop by the package.
+// LLMPackageStopState is the state of a stop of the service.
 type LLMPackageStopState string
 
 const (
@@ -426,19 +442,24 @@ type LLMModelCatalog struct {
 	PricesCollectedAt *string         `json:"prices_collected_at,omitempty"`
 }
 
-// LLMPackage is a credit package of the project.
+// LLMPackage is a credit package of the project with the choice of what
+// happens once it is used up.
 type LLMPackage struct {
-	ID                     int             `json:"id"`
-	TechTitle              string          `json:"tech_title"`
-	VolumeCredits          float64         `json:"volume_credits"`
-	DiscountPercent        float64         `json:"discount_percent"`
-	Price                  float64         `json:"price"`
-	FullMonthVolumeCredits *float64        `json:"full_month_volume_credits,omitempty"`
-	FullMonthPrice         *float64        `json:"full_month_price,omitempty"`
-	PeriodFrom             string          `json:"period_from"`
-	PeriodTo               string          `json:"period_to"`
-	AutoRenew              bool            `json:"auto_renew"`
-	State                  LLMPackageState `json:"state"`
+	ID            int     `json:"id"`
+	TechTitle     string  `json:"tech_title"`
+	VolumeCredits float64 `json:"volume_credits"`
+	// DiscountPercent is nil when the package has no price.
+	DiscountPercent *float64 `json:"discount_percent,omitempty"`
+	// Price is nil when the package has no price: usage in credits only.
+	Price                  *float64                `json:"price,omitempty"`
+	FullMonthVolumeCredits *float64                `json:"full_month_volume_credits,omitempty"`
+	FullMonthPrice         *float64                `json:"full_month_price,omitempty"`
+	PeriodFrom             string                  `json:"period_from"`
+	PeriodTo               string                  `json:"period_to"`
+	AutoRenew              bool                    `json:"auto_renew"`
+	ExhaustedPackageMode   LLMExhaustedPackageMode `json:"exhausted_package_mode"`
+	PayAsYouGoLimitCredits *float64                `json:"pay_as_you_go_limit_credits,omitempty"`
+	State                  LLMPackageState         `json:"state"`
 }
 
 // LLMPackageUsage is the spend of the open package period. PeriodTo is exclusive.
@@ -451,7 +472,8 @@ type LLMPackageUsage struct {
 	OverPackageCredits   float64  `json:"over_package_credits"`
 }
 
-// LLMPackageStop is a stop of the service by the package.
+// LLMPackageStop is a stop of the service by the package, the pay-as-you-go
+// limit or the project quota.
 type LLMPackageStop struct {
 	StoppedAt string               `json:"stopped_at"`
 	Reason    LLMPackageStopReason `json:"reason"`
@@ -459,36 +481,40 @@ type LLMPackageStop struct {
 }
 
 // LLMCurrentPackage is the package state of the project. Package is nil when
-// the project has no current package.
+// the project has no current package. PricePerCredit, Currency and TaxLabel
+// are nil for a project without the Finances option: usage in credits only.
 type LLMCurrentPackage struct {
-	Package                *LLMPackage             `json:"package,omitempty"`
-	Usage                  LLMPackageUsage         `json:"usage"`
-	PricePerCredit         *float64                `json:"price_per_credit,omitempty"`
-	Currency               string                  `json:"currency"`
-	TaxLabel               *LLMTaxLabel            `json:"tax_label,omitempty"`
-	PackagesDisabled       bool                    `json:"packages_disabled"`
-	ExhaustedPackageMode   LLMExhaustedPackageMode `json:"exhausted_package_mode"`
-	PayAsYouGoLimitCredits *float64                `json:"pay_as_you_go_limit_credits,omitempty"`
-	Stop                   *LLMPackageStop         `json:"stop,omitempty"`
+	Package          *LLMPackage     `json:"package,omitempty"`
+	Usage            LLMPackageUsage `json:"usage"`
+	PricePerCredit   *float64        `json:"price_per_credit,omitempty"`
+	Currency         *string         `json:"currency,omitempty"`
+	TaxLabel         *LLMTaxLabel    `json:"tax_label,omitempty"`
+	PackagesDisabled bool            `json:"packages_disabled"`
+	Stop             *LLMPackageStop `json:"stop,omitempty"`
 }
 
-// LLMPackagePlanMonthTerms are the terms of a plan for the rest of the current month.
+// LLMPackagePlanMonthTerms are the terms of a plan for the rest of the current
+// month. Price is nil when the plan has no price.
 type LLMPackagePlanMonthTerms struct {
-	PeriodFrom    string  `json:"period_from"`
-	PeriodTo      string  `json:"period_to"`
-	VolumeCredits float64 `json:"volume_credits"`
-	Price         float64 `json:"price"`
+	PeriodFrom    string   `json:"period_from"`
+	PeriodTo      string   `json:"period_to"`
+	VolumeCredits float64  `json:"volume_credits"`
+	Price         *float64 `json:"price,omitempty"`
 }
 
-// LLMPackagePlan is a package plan available to the project. Description is in English.
+// LLMPackagePlan is a package available to the project: a package of the
+// partner tariff or an individual package of the project. Description is in
+// English. Price, DiscountPercent, Currency and TaxLabel are nil for a project
+// without the Finances option: usage in credits only.
 type LLMPackagePlan struct {
 	ID              int                       `json:"id"`
+	Source          LLMPackageSource          `json:"source"`
 	TechTitle       string                    `json:"tech_title"`
 	Description     string                    `json:"description,omitempty"`
 	VolumeCredits   float64                   `json:"volume_credits"`
-	DiscountPercent float64                   `json:"discount_percent"`
-	Price           float64                   `json:"price"`
-	Currency        string                    `json:"currency"`
+	DiscountPercent *float64                  `json:"discount_percent,omitempty"`
+	Price           *float64                  `json:"price,omitempty"`
+	Currency        *string                   `json:"currency,omitempty"`
 	TaxLabel        *LLMTaxLabel              `json:"tax_label,omitempty"`
 	CurrentMonth    *LLMPackagePlanMonthTerms `json:"current_month,omitempty"`
 }
