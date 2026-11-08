@@ -93,6 +93,9 @@ workflow, гоняет `gofmt`/`go vet`/`go build`/`go test -race` и `CHANGELOG
 Форма `## [X.Y.Z] - Unreleased` не используется вовсе — до тега есть только
 `[Unreleased]`.
 
+rc-тег `vX.Y.Z-rc.N` на коммите `staging` — версия для потребителей до релиза: `CHANGELOG.md`
+он не закрывает, `[Unreleased]` остаётся до финального тега `vX.Y.Z` на `main`.
+
 ## Гейты
 
 `.github/workflows/ci.yml` — Go из `go.mod`, затем:
