@@ -216,6 +216,8 @@ func TestLLMClosedSetsOnTheWire(t *testing.T) {
 		string(LLMExhaustedPackageModeContinuePayAsYouGo):    "continue_pay_as_you_go",
 		string(LLMPackageStopReasonPackageExhausted):         "package_exhausted",
 		string(LLMPackageStopReasonPayAsYouGoLimitExhausted): "pay_as_you_go_limit_exhausted",
+		string(LLMPackageStopReasonProjectQuotaExhausted):    "project_quota_exhausted",
+		string(LLMPackageSourceCatalog):                      "catalog",
 		string(LLMPackageStopStateStopped):                   "stopped",
 		string(LLMPackageStopStateStarting):                  "starting",
 		string(LLMPackageStopStateStarted):                   "started",
@@ -232,12 +234,14 @@ func TestLLMClosedSetsOnTheWire(t *testing.T) {
 
 	// Same spelling in different sets: a map keyed by the value cannot hold both.
 	same := map[string]struct{ got, want string }{
-		"LLMAccessKeyStateActive": {string(LLMAccessKeyStateActive), "active"},
-		"LLMPackageStateActive":   {string(LLMPackageStateActive), "active"},
-		"LLMUsageGroupByNone":     {string(LLMUsageGroupByNone), "none"},
-		"LLMUsageGroupByDay":      {string(LLMUsageGroupByDay), "day"},
-		"LLMUsageGroupByModel":    {string(LLMUsageGroupByModel), "model"},
-		"LLMUsageGroupByGroup":    {string(LLMUsageGroupByGroup), "group"},
+		"LLMAccessKeyStateActive":                  {string(LLMAccessKeyStateActive), "active"},
+		"LLMPackageStateActive":                    {string(LLMPackageStateActive), "active"},
+		"LLMUsageGroupByNone":                      {string(LLMUsageGroupByNone), "none"},
+		"LLMPackageSourceIndividual":               {string(LLMPackageSourceIndividual), "individual"},
+		"LLMAccessKeyStateSuspendedByProjectQuota": {string(LLMAccessKeyStateSuspendedByProjectQuota), "suspended_by_project_quota"},
+		"LLMUsageGroupByDay":                       {string(LLMUsageGroupByDay), "day"},
+		"LLMUsageGroupByModel":                     {string(LLMUsageGroupByModel), "model"},
+		"LLMUsageGroupByGroup":                     {string(LLMUsageGroupByGroup), "group"},
 	}
 	for name, c := range same {
 		if c.got != c.want {

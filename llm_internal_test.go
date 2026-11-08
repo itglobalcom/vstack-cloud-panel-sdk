@@ -254,9 +254,9 @@ func TestLLMResponseLiterals(t *testing.T) {
 		}
 	})
 
-	t.Run("package without current package and stop", func(t *testing.T) {
+	t.Run("credits mode package without current package and stop", func(t *testing.T) {
 		body := []byte(`{"package":{"usage":{"period_from":"2026-11-01","period_to":"2026-12-01","total_credits":5,
-			"in_package_credits":0,"over_package_credits":5},"currency":"RUB","packages_disabled":false,
+			"in_package_credits":0,"over_package_credits":5},"packages_disabled":false,
 			"exhausted_package_mode":"continue_pay_as_you_go"}}`)
 		var resp GetLLMPackageResponse
 		mustUnmarshal(t, body, &resp)
@@ -265,49 +265,131 @@ func TestLLMResponseLiterals(t *testing.T) {
 			p.PayAsYouGoLimitCredits != nil || p.Usage.PackageVolumeCredits != nil {
 			t.Fatalf("package without optionals = %+v", p)
 		}
+		if p.Currency != "" {
+			t.Errorf("credits mode currency = %q, want empty", p.Currency)
+		}
 		if p.ExhaustedPackageMode != entities.LLMExhaustedPackageModeContinuePayAsYouGo ||
-			p.Usage.PeriodTo != "2026-12-01" || p.Usage.OverPackageCredits != 5 || p.Currency != "RUB" {
+			p.Usage.PeriodTo != "2026-12-01" || p.Usage.OverPackageCredits != 5 {
 			t.Errorf("package = %+v", p)
 		}
 	})
 
-	t.Run("package with current package and stop", func(t *testing.T) {
+	t.Run("money mode package with current package and stop", func(t *testing.T) {
 		body := []byte(`{"package":{"package":{"id":2,"tech_title":"S","volume_credits":1000,"discount_percent":10,"price":900,
-			"full_month_volume_credits":1000,"period_from":"2026-11-01","period_to":"2026-12-01","auto_renew":true,"state":"active"},
+			"full_month_volume_credits":1000,"period_from":"2026-11-01","period_to":"2026-12-01","auto_renew":true,
+			"exhausted_package_mode":"continue_pay_as_you_go","pay_as_you_go_limit_credits":250,"state":"active"},
 			"usage":{"period_from":"2026-11-01","period_to":"2026-12-01","total_credits":1000,"package_volume_credits":1000,
 			"in_package_credits":1000,"over_package_credits":0},"price_per_credit":0.9,"currency":"RUB","tax_label":"vat_excluded",
-			"packages_disabled":false,"exhausted_package_mode":"stop","pay_as_you_go_limit_credits":0,
-			"stop":{"stopped_at":"2026-11-20T10:00:00Z","reason":"package_exhausted","state":"stopped"}}}`)
+			"packages_disabled":false,"exhausted_package_mode":"continue_pay_as_you_go","pay_as_you_go_limit_credits":250,
+			"stop":{"stopped_at":"2026-11-20T10:00:00Z","reason":"pay_as_you_go_limit_exhausted","state":"stopped"}}}`)
 		var resp GetLLMPackageResponse
 		mustUnmarshal(t, body, &resp)
 		p := resp.Package
-		if p.Package == nil || p.Package.ID != 2 || p.Package.State != entities.LLMPackageStateActive || !p.Package.AutoRenew ||
-			p.Package.FullMonthVolumeCredits == nil || p.Package.FullMonthPrice != nil {
-			t.Errorf("package.package = %+v", p.Package)
+		pkg := p.Package
+		if pkg == nil || pkg.ID != 2 || pkg.State != entities.LLMPackageStateActive || !pkg.AutoRenew ||
+			pkg.FullMonthVolumeCredits == nil || pkg.FullMonthPrice != nil {
+			t.Fatalf("package.package = %+v", pkg)
 		}
-		if p.Stop == nil || p.Stop.Reason != entities.LLMPackageStopReasonPackageExhausted || p.Stop.State != entities.LLMPackageStopStateStopped {
+		if pkg.Price == nil || *pkg.Price != 900 || pkg.DiscountPercent == nil || *pkg.DiscountPercent != 10 {
+			t.Errorf("package price/discount = %v/%v, want 900/10", pkg.Price, pkg.DiscountPercent)
+		}
+		if pkg.ExhaustedPackageMode != entities.LLMExhaustedPackageModeContinuePayAsYouGo ||
+			pkg.PayAsYouGoLimitCredits == nil || *pkg.PayAsYouGoLimitCredits != 250 {
+			t.Errorf("package choice = %q/%v, want continue_pay_as_you_go/250", pkg.ExhaustedPackageMode, pkg.PayAsYouGoLimitCredits)
+		}
+		if p.ExhaustedPackageMode != entities.LLMExhaustedPackageModeContinuePayAsYouGo ||
+			p.PayAsYouGoLimitCredits == nil || *p.PayAsYouGoLimitCredits != 250 {
+			t.Errorf("top-level choice = %q/%v, want continue_pay_as_you_go/250", p.ExhaustedPackageMode, p.PayAsYouGoLimitCredits)
+		}
+		if p.Stop == nil || p.Stop.Reason != entities.LLMPackageStopReasonPayAsYouGoLimitExhausted ||
+			p.Stop.State != entities.LLMPackageStopStateStopped {
 			t.Errorf("stop = %+v", p.Stop)
 		}
-		if p.PayAsYouGoLimitCredits == nil || *p.PayAsYouGoLimitCredits != 0 || *p.TaxLabel != entities.LLMTaxLabelVATExcluded {
-			t.Errorf("limit/tax = %v/%v", p.PayAsYouGoLimitCredits, p.TaxLabel)
+		if p.Currency != "RUB" || p.PricePerCredit == nil || *p.PricePerCredit != 0.9 ||
+			p.TaxLabel == nil || *p.TaxLabel != entities.LLMTaxLabelVATExcluded {
+			t.Errorf("currency/price_per_credit/tax = %q/%v/%v", p.Currency, p.PricePerCredit, p.TaxLabel)
 		}
 	})
 
-	t.Run("package plans", func(t *testing.T) {
-		body := []byte(`{"package_plans":[{"id":1,"tech_title":"S","description":"Small","volume_credits":1000,
-			"discount_percent":10,"price":900,"currency":"RUB",
+	t.Run("credits mode package stopped by project quota", func(t *testing.T) {
+		body := []byte(`{"package":{"package":{"id":4,"tech_title":"S","volume_credits":1000,
+			"period_from":"2026-11-01","period_to":"2026-12-01","auto_renew":false,
+			"exhausted_package_mode":"stop","pay_as_you_go_limit_credits":0,"state":"active"},
+			"usage":{"period_from":"2026-11-01","period_to":"2026-12-01","total_credits":300,"package_volume_credits":1000,
+			"in_package_credits":300,"over_package_credits":0},"packages_disabled":false,
+			"exhausted_package_mode":"stop","pay_as_you_go_limit_credits":0,
+			"stop":{"stopped_at":"2026-11-20T10:00:00Z","reason":"project_quota_exhausted","state":"stopped"}}}`)
+		var resp GetLLMPackageResponse
+		mustUnmarshal(t, body, &resp)
+		p := resp.Package
+		pkg := p.Package
+		if pkg == nil || pkg.ID != 4 {
+			t.Fatalf("package.package = %+v", pkg)
+		}
+		if pkg.Price != nil || pkg.DiscountPercent != nil {
+			t.Errorf("unpriced package price/discount = %v/%v, want nil", pkg.Price, pkg.DiscountPercent)
+		}
+		if pkg.ExhaustedPackageMode != entities.LLMExhaustedPackageModeStop ||
+			pkg.PayAsYouGoLimitCredits == nil || *pkg.PayAsYouGoLimitCredits != 0 {
+			t.Errorf("package choice = %q/%v, want stop/present 0", pkg.ExhaustedPackageMode, pkg.PayAsYouGoLimitCredits)
+		}
+		if p.Currency != "" || p.PricePerCredit != nil || p.TaxLabel != nil {
+			t.Errorf("credits mode currency/price_per_credit/tax = %q/%v/%v, want none", p.Currency, p.PricePerCredit, p.TaxLabel)
+		}
+		if p.Stop == nil || p.Stop.Reason != entities.LLMPackageStopReasonProjectQuotaExhausted {
+			t.Errorf("stop = %+v, want project_quota_exhausted", p.Stop)
+		}
+	})
+
+	t.Run("package plans priced and in credits", func(t *testing.T) {
+		body := []byte(`{"package_plans":[{"id":1,"source":"catalog","tech_title":"S","description":"Small","volume_credits":1000,
+			"discount_percent":10,"price":900,"currency":"RUB","tax_label":"nds_excluded",
 			"current_month":{"period_from":"2026-11-07","period_to":"2026-12-01","volume_credits":800,"price":720}},
-			{"id":2,"tech_title":"M","volume_credits":5000,"discount_percent":20,"price":4000,"currency":"RUB"}]}`)
+			{"id":1,"source":"individual","tech_title":"VIP","volume_credits":5000,
+			"current_month":{"period_from":"2026-11-07","period_to":"2026-12-01","volume_credits":4000}}]}`)
 		var resp ListLLMPackagePlansResponse
 		mustUnmarshal(t, body, &resp)
 		if len(resp.PackagePlans) != 2 {
 			t.Fatalf("plans = %d, want 2", len(resp.PackagePlans))
 		}
-		if cm := resp.PackagePlans[0].CurrentMonth; cm == nil || cm.VolumeCredits != 800 || cm.Price != 720 {
-			t.Errorf("current_month = %+v", cm)
+		priced := resp.PackagePlans[0]
+		if priced.Source != entities.LLMPackageSourceCatalog {
+			t.Errorf("priced source = %q, want catalog", priced.Source)
 		}
-		if p := resp.PackagePlans[1]; p.CurrentMonth != nil || p.TaxLabel != nil || p.VolumeCredits != 5000 {
-			t.Errorf("plan without optionals = %+v", p)
+		if priced.Price == nil || *priced.Price != 900 || priced.DiscountPercent == nil || *priced.DiscountPercent != 10 ||
+			priced.Currency == nil || *priced.Currency != "RUB" ||
+			priced.TaxLabel == nil || *priced.TaxLabel != entities.LLMTaxLabelNDSExcluded {
+			t.Errorf("priced plan = %+v", priced)
+		}
+		if cm := priced.CurrentMonth; cm == nil || cm.VolumeCredits != 800 || cm.Price == nil || *cm.Price != 720 {
+			t.Errorf("priced current_month = %+v", cm)
+		}
+		credits := resp.PackagePlans[1]
+		if credits.Source != entities.LLMPackageSourceIndividual || credits.ID != 1 || credits.VolumeCredits != 5000 {
+			t.Errorf("individual plan = %+v", credits)
+		}
+		if credits.Price != nil || credits.DiscountPercent != nil || credits.Currency != nil || credits.TaxLabel != nil {
+			t.Errorf("credits mode plan must have no price, discount, currency, tax_label: %+v", credits)
+		}
+		if cm := credits.CurrentMonth; cm == nil || cm.VolumeCredits != 4000 || cm.Price != nil {
+			t.Errorf("credits mode current_month = %+v, want volume 4000 and no price", cm)
+		}
+	})
+
+	t.Run("group and key suspended by project quota", func(t *testing.T) {
+		var groups ListLLMGroupsResponse
+		mustUnmarshal(t, []byte(`{"groups":[{"id":3,"name":"prod","state":"suspended_by_project_quota",
+			"created_at":"2026-10-01T10:00:00Z"}]}`), &groups)
+		if len(groups.Groups) != 1 || groups.Groups[0].State == nil ||
+			*groups.Groups[0].State != entities.LLMGroupStateSuspendedByProjectQuota {
+			t.Errorf("groups = %+v, want state suspended_by_project_quota", groups.Groups)
+		}
+		var keys ListLLMAccessKeysResponse
+		mustUnmarshal(t, []byte(`{"access_keys":[{"id":9,"group_id":3,"name":"ci","state":"suspended_by_project_quota",
+			"created_at":"2026-10-01T10:00:00Z"}]}`), &keys)
+		if len(keys.AccessKeys) != 1 || keys.AccessKeys[0].State == nil ||
+			*keys.AccessKeys[0].State != entities.LLMAccessKeyStateSuspendedByProjectQuota {
+			t.Errorf("access keys = %+v, want state suspended_by_project_quota", keys.AccessKeys)
 		}
 	})
 
