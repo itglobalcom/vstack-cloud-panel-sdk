@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-09
+
+Adds the **LLM** section of the Public API — the service connection, groups, access keys,
+the model catalog, the package and its plans, the usage and the request log — LLM in the
+credits-only mode of a project without the Finances option, LLM tasks, and the services
+connected to the project. Nothing published is removed.
+
 ### Added
 
 - **LLM**: a method for every operation of the Public API `llm` section — the service
