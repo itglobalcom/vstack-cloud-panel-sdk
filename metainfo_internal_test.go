@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"sync/atomic"
 	"testing"
@@ -426,5 +427,125 @@ func TestGetProjectConsumptionRequests(t *testing.T) {
 				t.Errorf("a response without consumption: err = %v, want ErrNotFound", err)
 			}
 		})
+	}
+}
+
+// The services arrive as the Public API names them. The set of services and of
+// states grows by addition: a value the SDK has no constant for must decode as
+// is, not fail the whole response.
+func TestParseProjectServicesResponse(t *testing.T) {
+	body := []byte(`{"project_id":42,"services":[
+		{"service":"vstack","state":"active"},
+		{"service":"vmware","state":"active"},
+		{"service":"dns","state":"active"},
+		{"service":"kubernetes","state":"maintenance"},
+		{"service":"llm","state":"maintenance"},
+		{"service":"cdn","state":"degraded"}
+	]}`)
+
+	var resp entities.ProjectServices
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.ProjectID != 42 {
+		t.Errorf("project_id = %d, want 42", resp.ProjectID)
+	}
+
+	want := []entities.ProjectServiceItem{
+		{Service: entities.ProjectServiceVstack, State: entities.ProjectServiceStateActive},
+		{Service: entities.ProjectServiceVmware, State: entities.ProjectServiceStateActive},
+		{Service: entities.ProjectServiceDNS, State: entities.ProjectServiceStateActive},
+		{Service: entities.ProjectServiceKubernetes, State: entities.ProjectServiceStateMaintenance},
+		{Service: entities.ProjectServiceLLM, State: entities.ProjectServiceStateMaintenance},
+		{Service: entities.ProjectService("cdn"), State: entities.ProjectServiceState("degraded")},
+	}
+	if len(resp.Services) != len(want) {
+		t.Fatalf("got %d services, want %d", len(resp.Services), len(want))
+	}
+	for i := range want {
+		if resp.Services[i] != want[i] {
+			t.Errorf("services[%d] = %+v, want %+v", i, resp.Services[i], want[i])
+		}
+	}
+}
+
+// The list is a plain GET on its route with the key in X-API-KEY. A project
+// without connected services comes without the collection and reads as an
+// empty list; a response without the project is ErrNotFound; a refused request
+// keeps the status of the API.
+func TestGetProjectServicesRequest(t *testing.T) {
+	var lastRequest, apiKey, respond atomic.Value
+	var bodyLen atomic.Int64
+	respond.Store(`{"project_id":42,"services":[{"service":"vstack","state":"active"},{"service":"llm","state":"maintenance"}]}`)
+	client := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lastRequest.Store(r.Method + " " + r.URL.RequestURI())
+		apiKey.Store(r.Header.Get("X-API-KEY"))
+		b, _ := io.ReadAll(r.Body)
+		bodyLen.Store(int64(len(b)))
+		w.Header().Set("Content-Type", "application/json")
+		if s := respond.Load().(string); s == "refuse" {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"errors":[{"code":-12030,"message":"forbidden"}]}`))
+		} else {
+			_, _ = w.Write([]byte(s))
+		}
+	}))
+	ctx := context.Background()
+
+	services, err := client.GetProjectServices(ctx)
+	if err != nil {
+		t.Fatalf("GetProjectServices: %v", err)
+	}
+	if got, want := lastRequest.Load(), "GET /api/v1/project/services"; got != want {
+		t.Errorf("sent %v, want %q", got, want)
+	}
+	if got := apiKey.Load(); got != "test-key" {
+		t.Errorf("X-API-KEY = %v, want test-key", got)
+	}
+	if n := bodyLen.Load(); n != 0 {
+		t.Errorf("request body has %d bytes, want none", n)
+	}
+	want := []entities.ProjectServiceItem{
+		{Service: entities.ProjectServiceVstack, State: entities.ProjectServiceStateActive},
+		{Service: entities.ProjectServiceLLM, State: entities.ProjectServiceStateMaintenance},
+	}
+	if services.ProjectID != 42 || len(services.Services) != len(want) {
+		t.Fatalf("services = %+v, want project 42 with %v", services, want)
+	}
+	for i := range want {
+		if services.Services[i] != want[i] {
+			t.Errorf("services[%d] = %+v, want %+v", i, services.Services[i], want[i])
+		}
+	}
+
+	respond.Store(`{"project_id":42}`)
+	services, err = client.GetProjectServices(ctx)
+	if err != nil {
+		t.Fatalf("a project without services: %v", err)
+	}
+	if services.ProjectID != 42 || len(services.Services) != 0 {
+		t.Errorf("a project without services = %+v, want project 42 and no services", services)
+	}
+
+	respond.Store(`{}`)
+	services, err = client.GetProjectServices(ctx)
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("a response without the project: err = %v, want ErrNotFound", err)
+	}
+	if services != nil {
+		t.Errorf("a response without the project must not return services, got %+v", services)
+	}
+
+	respond.Store("refuse")
+	services, err = client.GetProjectServices(ctx)
+	var re *RequestError
+	if !errors.As(err, &re) {
+		t.Fatalf("the API error must survive the wrapping: %v", err)
+	}
+	if re.StatusCode != http.StatusForbidden || !HasAPICode(err, -12030) {
+		t.Errorf("refused request: status %d, err %v; want %d with code -12030", re.StatusCode, err, http.StatusForbidden)
+	}
+	if services != nil {
+		t.Errorf("a refused request must not return services, got %+v", services)
 	}
 }

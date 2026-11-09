@@ -6,11 +6,57 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-Adds the **vStack server backup** and **one-click application** surfaces — backup
-storages, the backup service of a server and its restore points; the application catalog
-with parameters, applications in a server order, installations in the server response —
-and the **project consumption** reads (by service, by resource, by day), and raises the default wait for a task to one hour (see Changed). Nothing published is
-removed.
+## [1.5.0] - 2026-11-09
+
+Adds the **LLM** section of the Public API — the service connection, groups, access keys,
+the model catalog, the package and its plans, the usage and the request log — LLM in the
+credits-only mode of a project without the Finances option, LLM tasks, and the services
+connected to the project. Nothing published is removed.
+
+### Added
+
+- **LLM**: a method for every operation of the Public API `llm` section — the service
+  connection (`GetLLMConnection`, `ConnectLLM`), groups (`GetLLMGroupList`, `GetLLMGroup`,
+  `CreateLLMGroup`, `SetLLMGroupModels`, `SetLLMGroupTags`, `DisableLLMGroup`), access keys
+  of version 2 (`GetLLMAccessKeyList`, `GetLLMAccessKey`, `IssueLLMAccessKey`,
+  `RevealLLMAccessKeySecret`, `LockLLMAccessKey`, `UnlockLLMAccessKey`,
+  `DeleteLLMAccessKey`, `SetLLMAccessKeyTags`), the model catalog (`GetLLMModelList`,
+  `GetLLMModel`), the package and its plans (`GetLLMPackage`, `GetLLMPackagePlanList`), the
+  usage (`GetLLMUsage`) and the request log (`GetLLMRequestList`). Every operation with a
+  task has its `...AndWait` variant; `CreateLLMGroupAndWait` and `IssueLLMAccessKeyAndWait`
+  return the created group and key. Identifiers are `entities.LLMGroupID`,
+  `entities.LLMAccessKeyID` and `entities.LLMModelID`; closed sets are named string types
+  that grow by addition; fields the API may leave out are pointers, so a group being
+  created and a key being issued decode without `ID`. Requests validate before they are
+  sent: names required and at most 128 characters, the whole model and tag sets non-nil,
+  the usage period `From`/`To` required `YYYY-MM-DD`, `To` not earlier than `From`, at
+  most 366 days, a known `GroupBy`. The secret of a key is handed out once. The `llm`
+  example walks connection, group, key and secret.
+- **LLM** for a project without the Finances option — usage in credits only: the money
+  fields are left out and decode as nil — the price, the discount and the currency of a
+  package plan (`LLMPackagePlan`, its `CurrentMonth.Price`) and of a package
+  (`LLMPackage`), the credit price and the tax label of the current package
+  (`LLMCurrentPackage`; its `Currency` is empty), as well as the costs and the credit
+  price of the usage, the models and the groups. `LLMPackagePlan.Source` tells a package
+  of the partner tariff (`catalog`) from an individual package of the project
+  (`individual`). A package carries the choice of what happens once it is used up and the
+  pay-as-you-go limit (`LLMPackage.ExhaustedPackageMode`,
+  `LLMPackage.PayAsYouGoLimitCredits`); `LLMCurrentPackage` repeats them for the current
+  package, and without a package reports `continue_pay_as_you_go` with no limit. A group
+  and a key of a project suspended by its LLM quota report
+  `suspended_by_project_quota` instead of `active`; the current package reports the stop
+  with the reason `project_quota_exhausted`.
+- `GetTask` and the task wait read LLM tasks (`llm{N}`); `entities.TaskResourceLLMGroup`
+  and `entities.TaskResourceLLMAccessKey` name the resources they report.
+- `GetProjectServices` reads the project ID of the API key and the services connected to
+  the project with their state (`GET /api/v1/project/services`), with no permission
+  required in the project. `entities.ProjectService` grows by addition: a value without a
+  constant is still valid; `entities.ProjectServiceState` is `active` or `maintenance`.
+
+## [1.4.0] - 2026-11-06
+
+Adds the **project consumption** reads — by service, by resource, by day. Nothing
+published is removed.
 
 ### Added
 
@@ -27,6 +73,21 @@ removed.
   `Name` of a resource are `*string` and nil when the API leaves them out — a resource
   not addressable through the Public API, or one without a name of its own. The `meta`
   example reads all three.
+
+## [1.3.1] - 2026-10-13
+
+The tree of 1.3.0 under a new tag; nothing changed.
+
+## [1.3.0] - 2026-10-08
+
+Adds the **vStack server backup** and **one-click application** surfaces — backup
+storages, the backup service of a server and its restore points; the application catalog
+with parameters, applications in a server order, installations in the server response —
+and raises the default wait for a task to one hour (see Changed). Nothing published is
+removed.
+
+### Added
+
 - **vStack server backup**: the backup storages available to a server order
   (`GetBackupStorageList`) and to a server (`GetServerBackupStorages`) together with
   the partner's schedule limits; the backup service of a server — read
